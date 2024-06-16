@@ -1,14 +1,18 @@
 use bevy::{
     core_pipeline::{
         bloom::{BloomCompositeMode, BloomSettings},
+        core_2d::Core2dPlugin,
         tonemapping::Tonemapping,
     },
     prelude::*,
+    time::TimePlugin,
 };
+use neuron::Neuron;
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
 };
+use synapse::Synapse;
 
 mod neuron;
 mod synapse;
@@ -16,9 +20,70 @@ mod synapse;
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_systems(Startup, setup_scene)
-        .add_systems(Update, (update_bloom_settings))
+        .add_systems(Startup, (create_neurons))
+        .add_systems(Update, (simulate_neurons, fire_neuron))
         .run();
+}
+
+fn create_neurons(mut commands: Commands) {
+    let neuron_1 = neuron::Neuron::new();
+    let neuron_2 = neuron::Neuron::new();
+    let neuron_1 = commands.spawn(neuron_1).id();
+    let neuron_2 = commands.spawn(neuron_2).id();
+
+    let synapse_1 = commands
+        .spawn(synapse::Synapse::new(neuron_1, neuron_2))
+        .id();
+
+    commands.entity(neuron_1).add_child(synapse_1);
+}
+
+fn simulate_neurons(
+    mut neurons: Query<(Entity, &mut Neuron)>,
+    synapses: Query<&Synapse>,
+    time: Res<Time>,
+) {
+    println!("delta_seconds_f64: {}", time.delta_seconds_f64()); // Collect all neurons that need to be processed
+    let mut active_neurons = vec![];
+
+    for (entity, mut neuron) in neurons.iter_mut() {
+        if neuron.tick(time.delta_seconds_f64()) {
+            println!("Neuron fired: {:?}", entity);
+            active_neurons.push(entity);
+        }
+    }
+
+    // Apply synapse effects for each active neuron
+    for neuron_entity in active_neurons {
+        for synapse in synapses.iter() {
+            if synapse.pre_synaptic_neuron == neuron_entity {
+                if let Ok(post_synaptic_neuron) = neurons.get_mut(synapse.post_synaptic_neuron) {
+                    let (_, mut neuron) = post_synaptic_neuron;
+
+                    neuron.apply_synapse(synapse);
+                }
+            }
+        }
+    }
+}
+
+// fire neuron every 3 seconds
+fn fire_neuron(mut query: Query<(Entity, &mut Neuron)>, time: Res<Time>) {
+    for (entity, mut neuron) in query.iter_mut().skip(1) {
+        if time.elapsed_seconds() > 3.0 && time.elapsed_seconds() < 3.1 {
+            println!("Firing neuron {:?}", entity);
+            neuron.set_membrane_potential(30.0);
+        }
+    }
+}
+
+fn setup_plot(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    asset_server: Res<AssetServer>,
+) {
+    // commands.spawn(Camera2dBundle::default());
+    // let mut plot = Plot::default();
 }
 
 fn setup_scene(
