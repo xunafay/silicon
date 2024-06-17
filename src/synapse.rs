@@ -1,20 +1,34 @@
 use bevy::prelude::{Component, Entity};
 
+#[derive(Debug)]
+pub enum SynapseType {
+    Excitatory,
+    Inhibitory,
+}
+
 #[derive(Component, Debug)]
 pub struct Synapse {
     pub weight: f64,
     pub delay: u32,
-    pub pre_synaptic_neuron: Entity,
-    pub post_synaptic_neuron: Entity,
+    pub source: Entity,
+    pub target: Entity,
+    pub synapse_type: SynapseType,
 }
 
 impl Synapse {
-    pub fn new(pre_synaptic_neuron: Entity, post_synaptic_neuron: Entity) -> Self {
+    pub fn new(
+        source: Entity,
+        target: Entity,
+        weight: f64,
+        delay: u32,
+        synapse_type: SynapseType,
+    ) -> Self {
         Synapse {
-            weight: 50.0,
-            delay: 1,
-            pre_synaptic_neuron,
-            post_synaptic_neuron,
+            weight,
+            delay,
+            source,
+            target,
+            synapse_type,
         }
     }
 }

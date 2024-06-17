@@ -1,89 +1,223 @@
 use bevy::{
     core_pipeline::{
         bloom::{BloomCompositeMode, BloomSettings},
-        core_2d::Core2dPlugin,
         tonemapping::Tonemapping,
     },
+    log::LogPlugin,
     prelude::*,
-    time::TimePlugin,
 };
-use neuron::Neuron;
+use cortical_column::CorticalColumn;
+use neurons::{Neuron, OscillatingNeuron};
+use rand::seq::SliceRandom;
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
 };
 use synapse::Synapse;
-
-mod neuron;
+mod cortical_column;
+mod neurons;
 mod synapse;
 
 fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins)
-        .add_systems(Startup, (create_neurons))
-        .add_systems(Update, (simulate_neurons, fire_neuron))
-        .run();
+    App::new().add_plugins(NeuronPlugin).run();
+}
+
+pub struct NeuronPlugin;
+
+impl Plugin for NeuronPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(LogPlugin {
+                level: bevy::log::Level::TRACE,
+                filter: "info,silicon=trace".into(),
+                ..Default::default()
+            })
+            .add_systems(Startup, create_neurons)
+            .add_systems(Update, update_neurons_system)
+            // .add_systems(Startup, create_oscil_neuron)
+            // .add_systems(Update, sim_oscil_neurons)
+            ;
+    }
+}
+
+pub struct NeuronRenderPlugin;
+
+impl Plugin for NeuronRenderPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins(DefaultPlugins.set(LogPlugin {
+            level: bevy::log::Level::TRACE,
+            filter: "info,silicon=trace".into(),
+            ..Default::default()
+        }))
+        .add_systems(Startup, setup_scene)
+        .add_systems(Update, update_bloom_settings);
+    }
 }
 
 fn create_neurons(mut commands: Commands) {
-    let neuron_1 = neuron::Neuron::new();
-    let neuron_2 = neuron::Neuron::new();
-    let neuron_1 = commands.spawn(neuron_1).id();
-    let neuron_2 = commands.spawn(neuron_2).id();
+    let cortical_column = commands.spawn(CorticalColumn { x: 0, y: 0 }).id();
+    let mut neurons = vec![];
 
-    let synapse_1 = commands
-        .spawn(synapse::Synapse::new(neuron_1, neuron_2))
-        .id();
+    // create 10 leaky neurons
+    for _ in 0..10 {
+        let neuron = commands
+            .spawn(Neuron {
+                membrane_potential: -70.0,
+                resting_potential: -70.0,
+                reset_potential: -90.0,
+                threshold_potential: -55.0,
+                resistance: 1.3,
+                refractory_period: 0.09,
+                refactory_counter: 0.0,
+            })
+            .set_parent(cortical_column.clone())
+            .id();
 
-    commands.entity(neuron_1).add_child(synapse_1);
+        neurons.push(neuron);
+    }
+
+    // create 5 oscillating neurons
+    for _ in 0..5 {
+        let neuron = commands
+            .spawn(Neuron {
+                membrane_potential: -70.0,
+                resting_potential: -70.0,
+                reset_potential: -90.0,
+                threshold_potential: -55.0,
+                resistance: 1.3,
+                refractory_period: 0.09,
+                refactory_counter: 0.0,
+            })
+            .insert(OscillatingNeuron {
+                frequency: 0.32,
+                amplitude: 10.0,
+            })
+            .set_parent(cortical_column.clone())
+            .id();
+
+        neurons.push(neuron);
+    }
+
+    // create 2.5 synapses for each neuron
+    for neuron in neurons.clone() {
+        for _ in 0..2 {
+            let target_neuron = neurons.choose(&mut rand::thread_rng()).unwrap();
+            let synapse = commands
+                .spawn(Synapse {
+                    source: neuron.clone(),
+                    target: target_neuron.clone(),
+                    weight: 0.5,
+                    delay: 1,
+                    synapse_type: synapse::SynapseType::Excitatory,
+                })
+                .set_parent(neuron)
+                .id();
+
+            info!(
+                "Synapse created: {:?}, connected {:?} to {:?}",
+                synapse, neuron, target_neuron
+            );
+
+            commands.entity(neuron.clone()).add_child(synapse);
+        }
+    }
 }
 
-fn simulate_neurons(
-    mut neurons: Query<(Entity, &mut Neuron)>,
-    synapses: Query<&Synapse>,
+fn update_neurons_system(
     time: Res<Time>,
+    mut neuron_query: Query<(Entity, &mut Neuron, Option<&mut OscillatingNeuron>)>,
+    synapse_query: Query<(&Parent, &Synapse, Entity)>,
 ) {
-    println!("delta_seconds_f64: {}", time.delta_seconds_f64()); // Collect all neurons that need to be processed
-    let mut active_neurons = vec![];
+    let mut fired_neurons = vec![];
 
-    for (entity, mut neuron) in neurons.iter_mut() {
-        if neuron.tick(time.delta_seconds_f64()) {
-            println!("Neuron fired: {:?}", entity);
-            active_neurons.push(entity);
+    for (entity, mut neuron, oscillating) in neuron_query.iter_mut() {
+        // Update based on neuron type
+        let fired = if let Some(mut oscillating_neuron) = oscillating {
+            tick_oscillating(
+                &mut neuron,
+                &mut oscillating_neuron,
+                time.delta_seconds() as f64,
+            )
+        } else {
+            tick_leaky(&mut neuron, time.delta_seconds() as f64)
+        };
+
+        if fired {
+            trace!("Neuron fired: {:?}", entity);
+            fired_neurons.push(entity);
         }
     }
 
-    // Apply synapse effects for each active neuron
-    for neuron_entity in active_neurons {
-        for synapse in synapses.iter() {
-            if synapse.pre_synaptic_neuron == neuron_entity {
-                if let Ok(post_synaptic_neuron) = neurons.get_mut(synapse.post_synaptic_neuron) {
-                    let (_, mut neuron) = post_synaptic_neuron;
+    for neuron in fired_neurons {
+        for (parent, synapse, synapse_id) in synapse_query.iter() {
+            if parent.get() == neuron {
+                let (neuron_id, mut post_synaptic_neuron, _) = neuron_query
+                    .get_mut(synapse.target)
+                    .expect("Failed to get post synaptic neuron");
 
-                    neuron.apply_synapse(synapse);
-                }
+                post_synaptic_neuron.membrane_potential += synapse.weight;
+                trace!(
+                    "Synapse fired: {:?} with target {:?}",
+                    synapse_id,
+                    neuron_id
+                );
             }
         }
     }
+}
+
+pub fn tick_leaky(neuron: &mut Neuron, time_step: f64) -> bool {
+    if neuron.refactory_counter > 0.0 {
+        neuron.refactory_counter -= time_step as f32;
+        return false;
+    }
+
+    let delta_v =
+        neuron.resistance * (neuron.resting_potential - neuron.membrane_potential) * time_step;
+    neuron.membrane_potential += delta_v;
+
+    if neuron.membrane_potential >= neuron.threshold_potential {
+        neuron.membrane_potential = neuron.reset_potential;
+        neuron.refactory_counter = neuron.refractory_period;
+        return true;
+    }
+
+    false
+}
+
+pub fn tick_oscillating(
+    neuron: &mut Neuron,
+    oscillating: &mut OscillatingNeuron,
+    time_step: f64,
+) -> bool {
+    if neuron.refactory_counter > 0.0 {
+        neuron.refactory_counter -= time_step as f32;
+        return false;
+    }
+
+    let delta_v =
+        neuron.resistance * (neuron.resting_potential - neuron.membrane_potential) * time_step;
+    let oscillation = oscillating.amplitude
+        * (2.0 * std::f64::consts::PI * oscillating.frequency * time_step).sin();
+    neuron.membrane_potential += delta_v + oscillation;
+
+    if neuron.membrane_potential >= neuron.threshold_potential {
+        neuron.membrane_potential = neuron.reset_potential;
+        neuron.refactory_counter = neuron.refractory_period;
+        return true;
+    }
+
+    false
 }
 
 // fire neuron every 3 seconds
 fn fire_neuron(mut query: Query<(Entity, &mut Neuron)>, time: Res<Time>) {
     for (entity, mut neuron) in query.iter_mut().skip(1) {
         if time.elapsed_seconds() > 3.0 && time.elapsed_seconds() < 3.1 {
-            println!("Firing neuron {:?}", entity);
-            neuron.set_membrane_potential(30.0);
+            trace!("Firing neuron {:?}", entity);
+            neuron.membrane_potential = neuron.threshold_potential + 1.0;
         }
     }
-}
-
-fn setup_plot(
-    mut commands: Commands,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    asset_server: Res<AssetServer>,
-) {
-    // commands.spawn(Camera2dBundle::default());
-    // let mut plot = Plot::default();
 }
 
 fn setup_scene(
@@ -140,15 +274,12 @@ fn setup_scene(
                 _ => unreachable!(),
             };
 
-            commands.spawn((
-                PbrBundle {
-                    mesh: mesh.clone(),
-                    material,
-                    transform: Transform::from_xyz(x as f32, y as f32, 0.0),
-                    ..default()
-                },
-                Bouncing,
-            ));
+            commands.spawn(PbrBundle {
+                mesh: mesh.clone(),
+                material,
+                transform: Transform::from_xyz(x as f32, y as f32, 0.0),
+                ..default()
+            });
         }
     }
 
@@ -170,8 +301,6 @@ fn setup_scene(
         }),
     );
 }
-
-// ------------------------------------------------------------------------------------------------
 
 fn update_bloom_settings(
     mut camera: Query<(Entity, Option<&mut BloomSettings>), With<Camera>>,
@@ -290,15 +419,5 @@ fn update_bloom_settings(
                 commands.entity(entity).insert(BloomSettings::NATURAL);
             }
         }
-    }
-}
-
-#[derive(Component)]
-struct Bouncing;
-
-fn bounce_spheres(time: Res<Time>, mut query: Query<&mut Transform, With<Bouncing>>) {
-    for mut transform in query.iter_mut() {
-        transform.translation.y =
-            (transform.translation.x + transform.translation.z + time.elapsed_seconds()).sin();
     }
 }
