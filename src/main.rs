@@ -7,13 +7,22 @@ use bevy::{
     prelude::*,
 };
 use cortical_column::CorticalColumn;
-use neurons::{Neuron, OscillatingNeuron};
+use neurons::{LeakyIntegrateNeuron1D, OscillatingNeuron1D};
 use rand::seq::SliceRandom;
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
 };
 use synapse::Synapse;
+use uom::{
+    si::{
+        electric_potential::millivolt,
+        electrical_resistance::ohm,
+        f64::{ElectricPotential, ElectricalResistance},
+        time::{second, Time as SiTime},
+    },
+    ConstZero,
+};
 mod cortical_column;
 mod neurons;
 mod synapse;
@@ -61,14 +70,14 @@ fn create_neurons(mut commands: Commands) {
     // create 10 leaky neurons
     for _ in 0..10 {
         let neuron = commands
-            .spawn(Neuron {
-                membrane_potential: -70.0,
-                resting_potential: -70.0,
-                reset_potential: -90.0,
-                threshold_potential: -55.0,
-                resistance: 1.3,
-                refractory_period: 0.09,
-                refactory_counter: 0.0,
+            .spawn(LeakyIntegrateNeuron1D {
+                membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
+                resting_potential: ElectricPotential::new::<millivolt>(-70.0),
+                reset_potential: ElectricPotential::new::<millivolt>(-90.0),
+                threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
+                resistance: ElectricalResistance::new::<ohm>(1.3),
+                refractory_period: SiTime::new::<second>(0.09),
+                refactory_counter: SiTime::ZERO,
             })
             .set_parent(cortical_column.clone())
             .id();
@@ -79,16 +88,14 @@ fn create_neurons(mut commands: Commands) {
     // create 5 oscillating neurons
     for _ in 0..5 {
         let neuron = commands
-            .spawn(Neuron {
-                membrane_potential: -70.0,
-                resting_potential: -70.0,
-                reset_potential: -90.0,
-                threshold_potential: -55.0,
-                resistance: 1.3,
-                refractory_period: 0.09,
-                refactory_counter: 0.0,
-            })
-            .insert(OscillatingNeuron {
+            .spawn(OscillatingNeuron1D {
+                membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
+                resting_potential: ElectricPotential::new::<millivolt>(-70.0),
+                reset_potential: ElectricPotential::new::<millivolt>(-90.0),
+                threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
+                resistance: ElectricalResistance::new::<ohm>(1.3),
+                refractory_period: SiTime::new::<second>(0.09),
+                refactory_counter: SiTime::ZERO,
                 frequency: 0.32,
                 amplitude: 10.0,
             })
@@ -125,21 +132,23 @@ fn create_neurons(mut commands: Commands) {
 
 fn update_neurons_system(
     time: Res<Time>,
-    mut neuron_query: Query<(Entity, &mut Neuron, Option<&mut OscillatingNeuron>)>,
+    mut neuron_query: Query<(
+        Entity,
+        Option<&mut LeakyIntegrateNeuron1D>,
+        Option<&mut OscillatingNeuron1D>,
+    )>,
     synapse_query: Query<(&Parent, &Synapse, Entity)>,
 ) {
     let mut fired_neurons = vec![];
 
-    for (entity, mut neuron, oscillating) in neuron_query.iter_mut() {
+    for (entity, leaky, oscillating) in neuron_query.iter_mut() {
         // Update based on neuron type
-        let fired = if let Some(mut oscillating_neuron) = oscillating {
-            tick_oscillating(
-                &mut neuron,
-                &mut oscillating_neuron,
-                time.delta_seconds() as f64,
-            )
+        let fired = if let Some(mut neuron) = leaky {
+            neuron.tick(SiTime::new::<second>(0.1))
+        } else if let Some(mut neuron) = oscillating {
+            neuron.tick(SiTime::new::<second>(0.1))
         } else {
-            tick_leaky(&mut neuron, time.delta_seconds() as f64)
+            false
         };
 
         if fired {
@@ -151,71 +160,25 @@ fn update_neurons_system(
     for neuron in fired_neurons {
         for (parent, synapse, synapse_id) in synapse_query.iter() {
             if parent.get() == neuron {
-                let (neuron_id, mut post_synaptic_neuron, _) = neuron_query
+                let (neuron_id, post_synaptic_neuron, _) = neuron_query
                     .get_mut(synapse.target)
                     .expect("Failed to get post synaptic neuron");
 
-                post_synaptic_neuron.membrane_potential += synapse.weight;
-                trace!(
-                    "Synapse fired: {:?} with target {:?}",
-                    synapse_id,
-                    neuron_id
-                );
+                match post_synaptic_neuron {
+                    Some(mut neuron) => {
+                        neuron.membrane_potential +=
+                            ElectricPotential::new::<millivolt>(synapse.weight);
+                        trace!(
+                            "Synapse fired: {:?} with target {:?}",
+                            synapse_id,
+                            neuron_id
+                        );
+                    }
+                    None => {
+                        warn!("Post synaptic neuron not found: {:?}", neuron_id);
+                    }
+                }
             }
-        }
-    }
-}
-
-pub fn tick_leaky(neuron: &mut Neuron, time_step: f64) -> bool {
-    if neuron.refactory_counter > 0.0 {
-        neuron.refactory_counter -= time_step as f32;
-        return false;
-    }
-
-    let delta_v =
-        neuron.resistance * (neuron.resting_potential - neuron.membrane_potential) * time_step;
-    neuron.membrane_potential += delta_v;
-
-    if neuron.membrane_potential >= neuron.threshold_potential {
-        neuron.membrane_potential = neuron.reset_potential;
-        neuron.refactory_counter = neuron.refractory_period;
-        return true;
-    }
-
-    false
-}
-
-pub fn tick_oscillating(
-    neuron: &mut Neuron,
-    oscillating: &mut OscillatingNeuron,
-    time_step: f64,
-) -> bool {
-    if neuron.refactory_counter > 0.0 {
-        neuron.refactory_counter -= time_step as f32;
-        return false;
-    }
-
-    let delta_v =
-        neuron.resistance * (neuron.resting_potential - neuron.membrane_potential) * time_step;
-    let oscillation = oscillating.amplitude
-        * (2.0 * std::f64::consts::PI * oscillating.frequency * time_step).sin();
-    neuron.membrane_potential += delta_v + oscillation;
-
-    if neuron.membrane_potential >= neuron.threshold_potential {
-        neuron.membrane_potential = neuron.reset_potential;
-        neuron.refactory_counter = neuron.refractory_period;
-        return true;
-    }
-
-    false
-}
-
-// fire neuron every 3 seconds
-fn fire_neuron(mut query: Query<(Entity, &mut Neuron)>, time: Res<Time>) {
-    for (entity, mut neuron) in query.iter_mut().skip(1) {
-        if time.elapsed_seconds() > 3.0 && time.elapsed_seconds() < 3.1 {
-            trace!("Firing neuron {:?}", entity);
-            neuron.membrane_potential = neuron.threshold_potential + 1.0;
         }
     }
 }

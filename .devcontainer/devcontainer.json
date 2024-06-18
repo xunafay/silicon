@@ -1,5 +1,5 @@
 {
   "image": "mcr.microsoft.com/devcontainers/rust:1-1-bullseye",
-  "features": {
-  }
+  "features": {},
+  "postCreateCommand": "sudo apt update && sudo apt install -y pkg-config libssl-dev libasound2-dev build-essential libudev-dev"
 }
