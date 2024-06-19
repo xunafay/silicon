@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 bevy = { version = "0.13.2", features = ["dynamic_linking"] }
 bevy_math = "0.13.2"
+bevy_panorbit_camera = "0.18.2"
 rand = "0.8.5"
 uom = "0.36.0"
 
