@@ -1,13 +1,5 @@
 use bevy::prelude::*;
-use uom::{
-    si::{
-        electric_potential::millivolt,
-        electrical_resistance::ohm,
-        f64::{ElectricPotential, ElectricalResistance, Time},
-        time,
-    },
-    ConstZero,
-};
+use uom::si::f64::{ElectricPotential, ElectricalResistance, Time};
 
 #[derive(Component, Debug)]
 pub struct Neuron {

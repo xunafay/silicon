@@ -5,9 +5,16 @@ use bevy::{
     },
     log::LogPlugin,
     prelude::*,
+    window::PrimaryWindow,
+};
+use bevy_egui::{
+    egui::{self},
+    EguiContext, EguiContexts, EguiPlugin,
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use cortical_column::CorticalColumn;
+use data::MembranePlotter;
+use egui_plot::{Legend, Line, Plot};
 use neurons::{
     LeakyNeuron, Neuron, OscillatingNeuron, Refactory, Spike, SpikeEvent, SpikeRecorder,
 };
@@ -23,6 +30,7 @@ use uom::{
     ConstZero,
 };
 mod cortical_column;
+mod data;
 mod neurons;
 mod synapse;
 
@@ -63,12 +71,15 @@ impl Plugin for NeuronRenderPlugin {
             filter: "info,silicon=trace".into(),
             ..Default::default()
         }))
+        .add_plugins(EguiPlugin)
+        .add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin) // adds default options and `InspectorEguiImpl`s
         .add_plugins(PanOrbitCameraPlugin)
         .insert_resource(Msaa::Sample8)
         .add_systems(
             Startup,
             ((create_neurons, create_synapses).chain(), setup_scene),
         )
+        // .add_systems(PostStartup, hide_meshes) // hide meshes if you need some extra performance
         .add_systems(
             Update,
             (
@@ -77,7 +88,9 @@ impl Plugin for NeuronRenderPlugin {
                 update_bloom_settings,
                 update_synapses,
                 update_materials,
-                log_neuron,
+                ui_example_system,
+                inspector_ui,
+                update_plotters,
             ),
         )
         .add_systems(PostUpdate, update_clock)
@@ -85,8 +98,54 @@ impl Plugin for NeuronRenderPlugin {
     }
 }
 
-fn update_clock(mut time: ResMut<Clock>) {
-    time.time += time.tau;
+fn ui_example_system(
+    clock: Res<Clock>,
+    mut contexts: EguiContexts,
+    plotters: Query<(Entity, &MembranePlotter)>,
+) {
+    let (entity, first_plotter) = plotters.iter().next().unwrap();
+    egui::Window::new("Info").show(contexts.ctx_mut(), |ui| {
+        ui.label(format!("Time: {:.2}", clock.time));
+        let plot = Plot::new("Test").legend(Legend::default());
+        plot.show(ui, |plot_ui| {
+            plot_ui.line(Line::new(first_plotter.plot_points()).name(format!("{:?}", entity)));
+        });
+    });
+}
+
+fn inspector_ui(world: &mut World) {
+    let Ok(egui_context) = world
+        .query_filtered::<&mut EguiContext, With<PrimaryWindow>>()
+        .get_single(world)
+    else {
+        return;
+    };
+    let mut egui_context = egui_context.clone();
+
+    egui::Window::new("UI").show(egui_context.get_mut(), |ui| {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            // equivalent to `WorldInspectorPlugin`
+            bevy_inspector_egui::bevy_inspector::ui_for_world(world, ui);
+
+            egui::CollapsingHeader::new("Materials").show(ui, |ui| {
+                bevy_inspector_egui::bevy_inspector::ui_for_assets::<StandardMaterial>(world, ui);
+            });
+
+            ui.heading("Entities");
+            bevy_inspector_egui::bevy_inspector::ui_for_world_entities(world, ui);
+        });
+    });
+}
+
+fn update_clock(mut clock: ResMut<Clock>) {
+    clock.time += clock.tau;
+}
+
+#[allow(dead_code)]
+fn hide_meshes(mut visibilities: Query<&mut Visibility>) {
+    for mut visibility in visibilities.iter_mut() {
+        *visibility = Visibility::Hidden;
+    }
 }
 
 fn create_neurons(
@@ -133,9 +192,11 @@ fn create_neurons(
                     PbrBundle {
                         mesh: mesh.clone(),
                         material: leaky_neuron_material,
+                        visibility: Visibility::Visible,
                         transform: Transform::from_xyz(x as f32, y as f32, -10.0),
                         ..Default::default()
                     },
+                    MembranePlotter::new(),
                 ))
                 // .set_parent(cortical_column.clone())
                 .id();
@@ -164,7 +225,7 @@ fn create_neurons(
                     },
                     OscillatingNeuron {
                         // random frequency between 0.05 and 0.3
-                        frequency: 0.05 + (0.3 - 0.05) * rand::random::<f64>(),
+                        frequency: 0.01 + (0.2 - 0.01) * rand::random::<f64>(),
                         amplitude: 1.0,
                     },
                     PbrBundle {
@@ -179,6 +240,15 @@ fn create_neurons(
 
             neurons.push(neuron);
         }
+    }
+}
+
+fn update_plotters(mut plotter_query: Query<(&Neuron, &mut MembranePlotter)>, clock: Res<Clock>) {
+    for (neuron, mut membrane_plotter) in plotter_query.iter_mut() {
+        membrane_plotter.add_point(
+            neuron.membrane_potential.get::<millivolt>(),
+            SiTime::new::<second>(clock.time).get::<second>(),
+        );
     }
 }
 
@@ -218,7 +288,7 @@ fn create_synapses(
                         source: pre_entity.clone(),
                         target: post_entity.clone(),
                         // weight between 0 and 1
-                        weight: rand::random::<f64>() + 0.1,
+                        weight: rand::random::<f64>(),
                         delay: 1,
                         synapse_type: synapse::SynapseType::Excitatory,
                     },
@@ -306,7 +376,7 @@ fn update_oscillating_neurons(
     )>,
     mut spike_writer: EventWriter<SpikeEvent>,
 ) {
-    for (entity, mut neuron, leaky, oscillating, spike_recorder) in neuron_query.iter_mut() {
+    for (entity, mut neuron, _, oscillating, spike_recorder) in neuron_query.iter_mut() {
         let delta_v = (neuron.resistance.get::<ohm>()
             * (neuron.threshold_potential.get::<millivolt>() + 5.0
                 - neuron.membrane_potential.get::<millivolt>()))
@@ -331,18 +401,6 @@ fn update_oscillating_neurons(
             });
         }
     }
-}
-
-fn log_neuron(
-    mut neuron_query: Query<(Entity, &Neuron, &LeakyNeuron), Without<OscillatingNeuron>>,
-) {
-    // get first neuron
-    let (entity, neuron, _) = neuron_query.iter().next().unwrap();
-    // info!(
-    //     "Neuron({:?}), {:?}",
-    //     entity,
-    //     neuron.membrane_potential.get::<millivolt>()
-    // );
 }
 
 fn update_synapses(
