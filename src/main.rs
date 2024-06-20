@@ -5,11 +5,7 @@ use bevy::{
     },
     log::LogPlugin,
     prelude::*,
-    window::{PrimaryWindow, WindowResolution},
-};
-use bevy_egui::{
-    egui::{self},
-    EguiContext, EguiContexts, EguiPlugin,
+    window::WindowResolution,
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::{
@@ -18,14 +14,15 @@ use bevy_rapier3d::{
     plugin::{NoUserData, RapierContext, RapierPhysicsPlugin},
     render::RapierDebugRenderPlugin,
 };
-use cortical_column::CorticalColumn;
-use data::MembranePlotter;
-use egui_plot::{Legend, Line, Plot};
+use data::{MembranePlotter, NeuronDataCollectionPlugin};
 use neurons::{
-    LeakyNeuron, Neuron, OscillatingNeuron, Refactory, Spike, SpikeEvent, SpikeRecorder,
+    cortical_column::CorticalColumn,
+    leaky::LeakyNeuron,
+    synapse::{Synapse, SynapseType},
+    Neuron, NeuronRuntimePlugin, OscillatingNeuron, Refactory,
 };
 use rand::seq::IteratorRandom;
-use synapse::Synapse;
+use ui::SiliconUiPlugin;
 use uom::{
     si::{
         electric_potential::millivolt,
@@ -35,19 +32,13 @@ use uom::{
     },
     ConstZero,
 };
-mod cortical_column;
+
 mod data;
 mod neurons;
-mod synapse;
+mod ui;
 
 fn main() {
-    App::new().add_plugins(NeuronRenderPlugin).run();
-}
-
-#[derive(Resource)]
-pub struct Clock {
-    pub time: f64,
-    pub tau: f64,
+    App::new().add_plugins(SiliconPlugin).run();
 }
 
 #[derive(Resource)]
@@ -55,27 +46,9 @@ pub struct Insights {
     pub selected_entity: Option<Entity>,
 }
 
-pub struct NeuronPlugin;
+pub struct SiliconPlugin;
 
-impl Plugin for NeuronPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_plugins(MinimalPlugins)
-            .add_plugins(LogPlugin {
-                level: bevy::log::Level::TRACE,
-                filter: "info,silicon=trace".into(),
-                ..Default::default()
-            })
-            .add_systems(Startup, create_neurons)
-            // .add_systems(Update, update_neurons_system)
-            // .add_systems(Startup, create_oscil_neuron)
-            // .add_systems(Update, sim_oscil_neurons)
-            ;
-    }
-}
-
-pub struct NeuronRenderPlugin;
-
-impl Plugin for NeuronRenderPlugin {
+impl Plugin for SiliconPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(
             DefaultPlugins
@@ -93,10 +66,11 @@ impl Plugin for NeuronRenderPlugin {
                     ..Default::default()
                 }),
         )
-        .add_plugins(EguiPlugin)
-        .add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin) // adds default options and `InspectorEguiImpl`s
         .add_plugins(PanOrbitCameraPlugin)
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
+        .add_plugins(NeuronDataCollectionPlugin)
+        .add_plugins(SiliconUiPlugin)
+        .add_plugins(NeuronRuntimePlugin)
         // .add_plugins(RapierDebugRenderPlugin::default())
         .insert_resource(Msaa::Sample8)
         .insert_resource(Insights {
@@ -109,72 +83,9 @@ impl Plugin for NeuronRenderPlugin {
         // .add_systems(PostStartup, hide_meshes) // hide meshes if you need some extra performance
         .add_systems(
             Update,
-            (
-                update_leaky_neurons,
-                update_oscillating_neurons,
-                update_bloom_settings,
-                update_synapses,
-                update_materials,
-                ui_example_system,
-                inspector_ui,
-                update_plotters,
-                mouse_click,
-            ),
-        )
-        .add_systems(PostUpdate, update_clock)
-        .add_event::<SpikeEvent>();
+            (update_bloom_settings, update_materials, mouse_click),
+        );
     }
-}
-
-fn ui_example_system(
-    clock: Res<Clock>,
-    insights: Res<Insights>,
-    mut contexts: EguiContexts,
-    plotters: Query<(Entity, &MembranePlotter)>,
-) {
-    let selected_plotter = plotters.iter().find(|(entity, _)| {
-        insights
-            .selected_entity
-            .map_or(false, |selected_entity| *entity == selected_entity)
-    });
-    egui::Window::new("Info").show(contexts.ctx_mut(), |ui| {
-        ui.label(format!("Time: {:.2}", clock.time));
-        let plot = Plot::new("Test").legend(Legend::default());
-
-        if let Some((entity, plotter)) = selected_plotter {
-            plot.show(ui, |plot_ui| {
-                plot_ui.line(Line::new(plotter.plot_points()).name(format!("{:?}", entity)));
-            });
-        }
-    });
-}
-
-fn inspector_ui(world: &mut World) {
-    let Ok(egui_context) = world
-        .query_filtered::<&mut EguiContext, With<PrimaryWindow>>()
-        .get_single(world)
-    else {
-        return;
-    };
-    let mut egui_context = egui_context.clone();
-
-    egui::Window::new("UI").show(egui_context.get_mut(), |ui| {
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            // equivalent to `WorldInspectorPlugin`
-            bevy_inspector_egui::bevy_inspector::ui_for_world(world, ui);
-
-            egui::CollapsingHeader::new("Materials").show(ui, |ui| {
-                bevy_inspector_egui::bevy_inspector::ui_for_assets::<StandardMaterial>(world, ui);
-            });
-
-            ui.heading("Entities");
-            bevy_inspector_egui::bevy_inspector::ui_for_world_entities(world, ui);
-        });
-    });
-}
-
-fn update_clock(mut clock: ResMut<Clock>) {
-    clock.time += clock.tau;
 }
 
 #[allow(dead_code)]
@@ -193,11 +104,6 @@ fn create_neurons(
         CorticalColumn { x: 0, y: 0 },
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
-
-    commands.insert_resource(Clock {
-        time: 0.0,
-        tau: 0.1,
-    });
 
     let mesh = meshes.add(Cuboid::new(0.5, 0.5, 0.5).mesh());
 
@@ -282,15 +188,6 @@ fn create_neurons(
     }
 }
 
-fn update_plotters(mut plotter_query: Query<(&Neuron, &mut MembranePlotter)>, clock: Res<Clock>) {
-    for (neuron, mut membrane_plotter) in plotter_query.iter_mut() {
-        membrane_plotter.add_point(
-            neuron.membrane_potential.get::<millivolt>(),
-            SiTime::new::<second>(clock.time).get::<second>(),
-        );
-    }
-}
-
 fn create_synapses(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -330,7 +227,7 @@ fn create_synapses(
                         // weight between 0 and 1
                         weight: rand::random::<f64>() + 0.8,
                         delay: 1,
-                        synapse_type: synapse::SynapseType::Excitatory,
+                        synapse_type: SynapseType::Excitatory,
                     },
                     PbrBundle {
                         mesh: synapse_mesh,
@@ -380,113 +277,6 @@ fn mouse_click(
                     insights.selected_entity = Some(entity);
                     println!("Clicked on entity: {:?}", entity);
                 }
-            }
-        }
-    }
-}
-
-fn update_leaky_neurons(
-    clock: ResMut<Clock>,
-    mut neuron_query: Query<(
-        Entity,
-        &mut Neuron,
-        &mut LeakyNeuron,
-        &mut Refactory,
-        Option<&mut SpikeRecorder>,
-    )>,
-    mut spike_writer: EventWriter<SpikeEvent>,
-) {
-    for (entity, mut neuron, leaky, mut refactory, spike_recorder) in neuron_query.iter_mut() {
-        if refactory.refactory_counter > SiTime::ZERO {
-            refactory.refactory_counter -= SiTime::new::<second>(clock.tau);
-            continue;
-        }
-
-        let delta_v = (leaky.resting_potential.get::<millivolt>()
-            - neuron.membrane_potential.get::<millivolt>())
-            * clock.tau;
-
-        neuron.membrane_potential += ElectricPotential::new::<millivolt>(delta_v);
-
-        if neuron.membrane_potential > neuron.threshold_potential {
-            neuron.membrane_potential = neuron.reset_potential;
-            refactory.refactory_counter = refactory.refractory_period;
-
-            // trace!("Leaky neuron fired: {:?}", entity);
-            spike_writer.send(SpikeEvent {
-                time: SiTime::new::<second>(clock.time),
-                neuron: entity,
-            });
-
-            if let Some(mut spike_recorder) = spike_recorder {
-                spike_recorder.spikes.push(Spike {
-                    time: SiTime::new::<second>(clock.time),
-                    neuron: entity,
-                });
-            }
-        }
-    }
-}
-
-fn update_oscillating_neurons(
-    clock: ResMut<Clock>,
-    mut neuron_query: Query<(
-        Entity,
-        &mut Neuron,
-        &mut LeakyNeuron,
-        &mut OscillatingNeuron,
-        Option<&mut SpikeRecorder>,
-    )>,
-    mut spike_writer: EventWriter<SpikeEvent>,
-) {
-    for (entity, mut neuron, _, oscillating, spike_recorder) in neuron_query.iter_mut() {
-        let delta_v = (neuron.resistance.get::<ohm>()
-            * (neuron.threshold_potential.get::<millivolt>() + 5.0
-                - neuron.membrane_potential.get::<millivolt>()))
-            * clock.tau
-            * oscillating.frequency;
-
-        neuron.membrane_potential += ElectricPotential::new::<millivolt>(delta_v);
-
-        if neuron.membrane_potential >= neuron.threshold_potential {
-            neuron.membrane_potential = neuron.reset_potential;
-
-            if let Some(mut spike_recorder) = spike_recorder {
-                spike_recorder.spikes.push(Spike {
-                    time: SiTime::new::<second>(clock.time),
-                    neuron: entity,
-                });
-            }
-
-            spike_writer.send(SpikeEvent {
-                time: SiTime::new::<second>(clock.time),
-                neuron: entity,
-            });
-        }
-    }
-}
-
-fn update_synapses(
-    mut synapse_query: Query<&Synapse>,
-    mut spike_reader: EventReader<SpikeEvent>,
-    mut neuron_query: Query<(Entity, &mut Neuron, &mut LeakyNeuron, &Refactory)>,
-) {
-    // return;
-    for spike_event in spike_reader.read() {
-        for synapse in synapse_query.iter_mut() {
-            if synapse.source == spike_event.neuron {
-                let (_, mut target_neuron, leaky, refactory) =
-                    neuron_query.get_mut(synapse.target).unwrap();
-                if refactory.refactory_counter > SiTime::ZERO {
-                    continue;
-                }
-
-                let threshold_potential = target_neuron.threshold_potential.get::<millivolt>();
-                let resting_potential = leaky.resting_potential.get::<millivolt>();
-
-                let delta_v = synapse.weight * (threshold_potential - resting_potential);
-                // trace!("Synapse fired: {:?}, delta_v: {:?}", synapse, delta_v);
-                target_neuron.membrane_potential += ElectricPotential::new::<millivolt>(delta_v);
             }
         }
     }
