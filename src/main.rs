@@ -288,7 +288,7 @@ fn create_synapses(
                         source: pre_entity.clone(),
                         target: post_entity.clone(),
                         // weight between 0 and 1
-                        weight: rand::random::<f64>(),
+                        weight: rand::random::<f64>() + 0.8,
                         delay: 1,
                         synapse_type: synapse::SynapseType::Excitatory,
                     },
@@ -329,7 +329,7 @@ fn update_leaky_neurons(
 ) {
     for (entity, mut neuron, leaky, mut refactory, spike_recorder) in neuron_query.iter_mut() {
         if refactory.refactory_counter > SiTime::ZERO {
-            refactory.refactory_counter -= SiTime::new::<second>(0.1);
+            refactory.refactory_counter -= SiTime::new::<second>(clock.tau);
             continue;
         }
 
@@ -337,12 +337,6 @@ fn update_leaky_neurons(
             - neuron.membrane_potential.get::<millivolt>())
             * clock.tau;
 
-        // trace!("Leaky neuron({:?}) delta_v: {:?}", entity, delta_v);
-        // trace!(
-        //     "Leaky neuron({:?}) membrane_potential: {:?}",
-        //     entity,
-        //     neuron.membrane_potential.get::<millivolt>()
-        // );
         neuron.membrane_potential += ElectricPotential::new::<millivolt>(delta_v);
 
         if neuron.membrane_potential > neuron.threshold_potential {
@@ -406,13 +400,18 @@ fn update_oscillating_neurons(
 fn update_synapses(
     mut synapse_query: Query<&Synapse>,
     mut spike_reader: EventReader<SpikeEvent>,
-    mut neuron_query: Query<(Entity, &mut Neuron, &mut LeakyNeuron)>,
+    mut neuron_query: Query<(Entity, &mut Neuron, &mut LeakyNeuron, &Refactory)>,
 ) {
     // return;
     for spike_event in spike_reader.read() {
         for synapse in synapse_query.iter_mut() {
             if synapse.source == spike_event.neuron {
-                let (_, mut target_neuron, leaky) = neuron_query.get_mut(synapse.target).unwrap();
+                let (_, mut target_neuron, leaky, refactory) =
+                    neuron_query.get_mut(synapse.target).unwrap();
+                if refactory.refactory_counter > SiTime::ZERO {
+                    continue;
+                }
+
                 let threshold_potential = target_neuron.threshold_potential.get::<millivolt>();
                 let resting_potential = leaky.resting_potential.get::<millivolt>();
 
