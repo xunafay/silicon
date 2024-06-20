@@ -1,10 +1,14 @@
 use bevy::{
+    core::TaskPoolThreadAssignmentPolicy,
     core_pipeline::{
         bloom::{BloomCompositeMode, BloomSettings},
         tonemapping::Tonemapping,
     },
+    diagnostic::FrameTimeDiagnosticsPlugin,
     log::LogPlugin,
+    pbr::ClusterConfig,
     prelude::*,
+    tasks::available_parallelism,
     window::WindowResolution,
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
@@ -64,6 +68,17 @@ impl Plugin for SiliconPlugin {
                         ..Default::default()
                     }),
                     ..Default::default()
+                })
+                .set(TaskPoolPlugin {
+                    task_pool_options: TaskPoolOptions {
+                        // this thread setup is optimized for a compute-heavy workload and not asset loading
+                        compute: TaskPoolThreadAssignmentPolicy {
+                            min_threads: available_parallelism(),
+                            max_threads: std::usize::MAX,
+                            percent: 1.0,
+                        },
+                        ..default()
+                    },
                 }),
         )
         .add_plugins(PanOrbitCameraPlugin)
@@ -71,6 +86,7 @@ impl Plugin for SiliconPlugin {
         .add_plugins(NeuronDataCollectionPlugin)
         .add_plugins(SiliconUiPlugin)
         .add_plugins(NeuronRuntimePlugin)
+        .add_plugins(FrameTimeDiagnosticsPlugin::default())
         // .add_plugins(RapierDebugRenderPlugin::default())
         .insert_resource(Msaa::Sample8)
         .insert_resource(Insights {
@@ -340,16 +356,17 @@ fn setup_scene(mut commands: Commands) {
     commands.spawn((
         Camera3dBundle {
             camera: Camera {
-                hdr: true, // 1. HDR is required for bloom
+                hdr: true, // HDR is required for bloom
                 ..default()
             },
-            tonemapping: Tonemapping::TonyMcMapface, // 2. Using a tonemapper that desaturates to white is recommended
+            tonemapping: Tonemapping::TonyMcMapface, // Using a tonemapper that desaturates to white is recommended for bloom
             transform: Transform::from_xyz(-2.0, 2.5, 15.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         },
-        // 3. Enable bloom for the camera
+        // Enable bloom for the camera
         BloomSettings::NATURAL,
         PanOrbitCamera::default(),
+        ClusterConfig::Single, // Single cluster for the whole scene as it's small
     ));
 
     // bloom settings text
