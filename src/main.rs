@@ -5,13 +5,19 @@ use bevy::{
     },
     log::LogPlugin,
     prelude::*,
-    window::PrimaryWindow,
+    window::{PrimaryWindow, WindowResolution},
 };
 use bevy_egui::{
     egui::{self},
     EguiContext, EguiContexts, EguiPlugin,
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
+use bevy_rapier3d::{
+    geometry::Collider,
+    pipeline::QueryFilter,
+    plugin::{NoUserData, RapierContext, RapierPhysicsPlugin},
+    render::RapierDebugRenderPlugin,
+};
 use cortical_column::CorticalColumn;
 use data::MembranePlotter;
 use egui_plot::{Legend, Line, Plot};
@@ -44,6 +50,11 @@ pub struct Clock {
     pub tau: f64,
 }
 
+#[derive(Resource)]
+pub struct Insights {
+    pub selected_entity: Option<Entity>,
+}
+
 pub struct NeuronPlugin;
 
 impl Plugin for NeuronPlugin {
@@ -66,15 +77,31 @@ pub struct NeuronRenderPlugin;
 
 impl Plugin for NeuronRenderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(DefaultPlugins.set(LogPlugin {
-            level: bevy::log::Level::TRACE,
-            filter: "info,silicon=trace".into(),
-            ..Default::default()
-        }))
+        app.add_plugins(
+            DefaultPlugins
+                .set(LogPlugin {
+                    level: bevy::log::Level::TRACE,
+                    filter: "info,silicon=trace".into(),
+                    ..Default::default()
+                })
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Neuron Simulation".to_string(),
+                        resolution: WindowResolution::new(1920.0, 1080.0),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+        )
         .add_plugins(EguiPlugin)
         .add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin) // adds default options and `InspectorEguiImpl`s
         .add_plugins(PanOrbitCameraPlugin)
+        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
+        // .add_plugins(RapierDebugRenderPlugin::default())
         .insert_resource(Msaa::Sample8)
+        .insert_resource(Insights {
+            selected_entity: None,
+        })
         .add_systems(
             Startup,
             ((create_neurons, create_synapses).chain(), setup_scene),
@@ -91,6 +118,7 @@ impl Plugin for NeuronRenderPlugin {
                 ui_example_system,
                 inspector_ui,
                 update_plotters,
+                mouse_click,
             ),
         )
         .add_systems(PostUpdate, update_clock)
@@ -100,16 +128,24 @@ impl Plugin for NeuronRenderPlugin {
 
 fn ui_example_system(
     clock: Res<Clock>,
+    insights: Res<Insights>,
     mut contexts: EguiContexts,
     plotters: Query<(Entity, &MembranePlotter)>,
 ) {
-    let (entity, first_plotter) = plotters.iter().next().unwrap();
+    let selected_plotter = plotters.iter().find(|(entity, _)| {
+        insights
+            .selected_entity
+            .map_or(false, |selected_entity| *entity == selected_entity)
+    });
     egui::Window::new("Info").show(contexts.ctx_mut(), |ui| {
         ui.label(format!("Time: {:.2}", clock.time));
         let plot = Plot::new("Test").legend(Legend::default());
-        plot.show(ui, |plot_ui| {
-            plot_ui.line(Line::new(first_plotter.plot_points()).name(format!("{:?}", entity)));
-        });
+
+        if let Some((entity, plotter)) = selected_plotter {
+            plot.show(ui, |plot_ui| {
+                plot_ui.line(Line::new(plotter.plot_points()).name(format!("{:?}", entity)));
+            });
+        }
     });
 }
 
@@ -197,6 +233,7 @@ fn create_neurons(
                         ..Default::default()
                     },
                     MembranePlotter::new(),
+                    Collider::cuboid(0.25, 0.25, 0.25),
                 ))
                 // .set_parent(cortical_column.clone())
                 .id();
@@ -234,6 +271,8 @@ fn create_neurons(
                         transform: Transform::from_xyz(x as f32, y as f32, 10.0),
                         ..Default::default()
                     },
+                    MembranePlotter::new(),
+                    Collider::cuboid(0.25, 0.25, 0.25),
                 ))
                 // .set_parent(cortical_column.clone())
                 .id();
@@ -270,7 +309,7 @@ fn create_synapses(
     });
 
     for (pre_entity, _pre_neuron, pre_transform, _) in oscillating_neuron_query.iter_mut() {
-        for _ in 0..4 {
+        for _ in 0..12 {
             let (post_entity, _post_neuron, post_transform, _) = leaky_neuron_query
                 .iter()
                 .choose(&mut rand::thread_rng())
@@ -279,7 +318,8 @@ fn create_synapses(
             let midpoint = (pre_transform.translation + post_transform.translation) / 2.0;
             let direction = post_transform.translation - pre_transform.translation;
             let length = direction.length();
-            let rotation = Quat::from_rotation_arc(Vec3::Y, direction.normalize());
+            let normalized_direction = direction.normalize();
+            let rotation = Quat::from_rotation_arc(Vec3::Y, normalized_direction);
             let synapse_mesh = meshes.add(Capsule3d::new(0.05, length).mesh());
 
             let synapse = commands
@@ -302,8 +342,8 @@ fn create_synapses(
                         },
                         ..Default::default()
                     },
+                    // Collider::capsule_y(length / 2.0, 0.05),
                 ))
-                // .set_parent(neuron)
                 .id();
 
             info!(
@@ -312,6 +352,35 @@ fn create_synapses(
             );
 
             // commands.entity(neuron.clone()).add_child(synapse);
+        }
+    }
+}
+
+fn mouse_click(
+    windows: Query<&Window>,
+    button_inputs: Res<ButtonInput<MouseButton>>,
+    query_camera: Query<(&Camera, &GlobalTransform)>,
+    rapier_context: Res<RapierContext>,
+    mut insights: ResMut<Insights>,
+) {
+    let window = windows.get_single().unwrap();
+    if button_inputs.just_pressed(MouseButton::Left) {
+        if let Some(cursor_position) = window.cursor_position() {
+            let (camera, camera_transform) = query_camera.single();
+
+            if let Some(ray) = camera.viewport_to_world(camera_transform, cursor_position) {
+                // Perform ray casting
+                if let Some((entity, _intersection)) = rapier_context.cast_ray(
+                    ray.origin,
+                    *ray.direction,
+                    f32::MAX,
+                    true,
+                    QueryFilter::default(),
+                ) {
+                    insights.selected_entity = Some(entity);
+                    println!("Clicked on entity: {:?}", entity);
+                }
+            }
         }
     }
 }
