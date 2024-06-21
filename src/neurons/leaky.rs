@@ -8,6 +8,8 @@ use uom::{
     ConstZero,
 };
 
+use crate::data::MembranePlotter;
+
 use super::{Clock, Neuron, Refactory, Spike, SpikeEvent, SpikeRecorder};
 
 #[derive(Component, Debug)]
@@ -23,10 +25,13 @@ pub fn update_leaky_neurons(
         &mut LeakyNeuron,
         &mut Refactory,
         Option<&mut SpikeRecorder>,
+        Option<&mut MembranePlotter>,
     )>,
     mut spike_writer: EventWriter<SpikeEvent>,
 ) {
-    for (entity, mut neuron, leaky, mut refactory, spike_recorder) in neuron_query.iter_mut() {
+    for (entity, mut neuron, leaky, mut refactory, spike_recorder, plotter) in
+        neuron_query.iter_mut()
+    {
         if refactory.refactory_counter > SiTime::ZERO {
             refactory.refactory_counter -= SiTime::new::<second>(clock.tau);
             continue;
@@ -53,6 +58,10 @@ pub fn update_leaky_neurons(
                     time: SiTime::new::<second>(clock.time),
                     neuron: entity,
                 });
+            }
+
+            if let Some(mut plotter) = plotter {
+                plotter.add_spike(clock.time);
             }
         }
     }

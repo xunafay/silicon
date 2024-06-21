@@ -1,3 +1,5 @@
+use crate::data::MembranePlotter;
+
 use super::{
     leaky::LeakyNeuron, Clock, Neuron, OscillatingNeuron, Refactory, Spike, SpikeEvent,
     SpikeRecorder,
@@ -18,10 +20,11 @@ pub fn update_oscillating_neurons(
         &mut LeakyNeuron,
         &mut OscillatingNeuron,
         Option<&mut SpikeRecorder>,
+        Option<&mut MembranePlotter>,
     )>,
     mut spike_writer: EventWriter<SpikeEvent>,
 ) {
-    for (entity, mut neuron, _, oscillating, spike_recorder) in neuron_query.iter_mut() {
+    for (entity, mut neuron, _, oscillating, spike_recorder, plotter) in neuron_query.iter_mut() {
         let delta_v = (neuron.resistance.get::<ohm>()
             * (neuron.threshold_potential.get::<millivolt>() + 5.0
                 - neuron.membrane_potential.get::<millivolt>()))
@@ -38,6 +41,10 @@ pub fn update_oscillating_neurons(
                     time: Time::new::<second>(clock.time),
                     neuron: entity,
                 });
+            }
+
+            if let Some(mut plotter) = plotter {
+                plotter.add_spike(clock.time);
             }
 
             spike_writer.send(SpikeEvent {

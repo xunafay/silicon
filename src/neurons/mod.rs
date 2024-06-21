@@ -25,7 +25,7 @@ impl Plugin for NeuronRuntimePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Clock {
             time: 0.0,
-            tau: 0.1,
+            tau: 0.025,
         })
         .add_event::<SpikeEvent>()
         .add_systems(

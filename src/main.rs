@@ -215,9 +215,9 @@ fn create_synapses(
     >,
 ) {
     let synapse_material = materials.add(StandardMaterial {
-        base_color: Color::rgba(0.0, 1.0, 0.0, 0.5), // Green with 50% opacity
-        emissive: Color::rgb_linear(0.2, 200.0, 0.2), // Bright green emissive color
-        alpha_mode: AlphaMode::Blend,                // Enable blending for translucency
+        base_color: Color::rgba(0.4, 0.4, 1.0, 0.5),
+        emissive: Color::rgb_linear(0.3, 0.3, 200.0), // Bright green emissive color
+        alpha_mode: AlphaMode::Blend,                 // Enable blending for translucency
         ..Default::default()
     });
 
@@ -241,7 +241,7 @@ fn create_synapses(
                         source: pre_entity.clone(),
                         target: post_entity.clone(),
                         // weight between 0 and 1
-                        weight: rand::random::<f64>() + 0.8,
+                        weight: rand::random::<f64>(),
                         delay: 1,
                         synapse_type: SynapseType::Excitatory,
                     },
