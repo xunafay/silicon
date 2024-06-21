@@ -1,8 +1,7 @@
 use crate::data::MembranePlotter;
 
 use super::{
-    leaky::LeakyNeuron, Clock, Neuron, OscillatingNeuron, Refactory, Spike, SpikeEvent,
-    SpikeRecorder,
+    leaky::LeakyNeuron, Clock, Neuron, OscillatingNeuron, Spike, SpikeEvent, SpikeRecorder,
 };
 use bevy::prelude::*;
 use uom::si::{

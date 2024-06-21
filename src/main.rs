@@ -16,7 +16,6 @@ use bevy_rapier3d::{
     geometry::Collider,
     pipeline::QueryFilter,
     plugin::{NoUserData, RapierContext, RapierPhysicsPlugin},
-    render::RapierDebugRenderPlugin,
 };
 use data::{MembranePlotter, NeuronDataCollectionPlugin};
 use neurons::{
@@ -26,7 +25,7 @@ use neurons::{
     Neuron, NeuronRuntimePlugin, OscillatingNeuron, Refactory,
 };
 use rand::seq::IteratorRandom;
-use ui::SiliconUiPlugin;
+use ui::{state::UiState, SiliconUiPlugin};
 use uom::{
     si::{
         electric_potential::millivolt,
@@ -125,81 +124,85 @@ fn create_neurons(
 
     let mut neurons = vec![];
 
-    for x in -5..5 {
-        for y in -5..5 {
-            let leaky_neuron_material = materials.add(StandardMaterial {
-                emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
-                ..Default::default()
-            });
+    for x in 0..5 {
+        for y in 0..5 {
+            for z in 0..1 {
+                let leaky_neuron_material = materials.add(StandardMaterial {
+                    emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
+                    ..Default::default()
+                });
 
-            let neuron = commands
-                .spawn((
-                    Neuron {
-                        membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
-                        reset_potential: ElectricPotential::new::<millivolt>(-90.0),
-                        threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
-                        resistance: ElectricalResistance::new::<ohm>(1.3),
-                    },
-                    LeakyNeuron {
-                        resting_potential: ElectricPotential::new::<millivolt>(-70.0),
-                    },
-                    Refactory {
-                        refractory_period: SiTime::new::<second>(0.09),
-                        refactory_counter: SiTime::ZERO,
-                    },
-                    PbrBundle {
-                        mesh: mesh.clone(),
-                        material: leaky_neuron_material,
-                        visibility: Visibility::Visible,
-                        transform: Transform::from_xyz(x as f32, y as f32, -10.0),
-                        ..Default::default()
-                    },
-                    MembranePlotter::new(),
-                    Collider::cuboid(0.25, 0.25, 0.25),
-                ))
-                // .set_parent(cortical_column.clone())
-                .id();
+                let neuron = commands
+                    .spawn((
+                        Neuron {
+                            membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
+                            reset_potential: ElectricPotential::new::<millivolt>(-90.0),
+                            threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
+                            resistance: ElectricalResistance::new::<ohm>(1.3),
+                        },
+                        LeakyNeuron {
+                            resting_potential: ElectricPotential::new::<millivolt>(-70.0),
+                        },
+                        Refactory {
+                            refractory_period: SiTime::new::<second>(0.09),
+                            refactory_counter: SiTime::ZERO,
+                        },
+                        PbrBundle {
+                            mesh: mesh.clone(),
+                            material: leaky_neuron_material,
+                            visibility: Visibility::Visible,
+                            transform: Transform::from_xyz(x as f32, y as f32, z as f32 + -5.0),
+                            ..Default::default()
+                        },
+                        MembranePlotter::new(),
+                        Collider::cuboid(0.25, 0.25, 0.25),
+                    ))
+                    // .set_parent(cortical_column.clone())
+                    .id();
 
-            neurons.push(neuron);
+                neurons.push(neuron);
+            }
         }
     }
 
-    for x in -2..2 {
-        for y in -2..2 {
-            let oscillating_neuron_material = materials.add(StandardMaterial {
-                emissive: Color::rgb_linear(3000.0, 23000.0, 9000.0),
-                ..Default::default()
-            });
+    for x in 0..3 {
+        for y in 0..3 {
+            for z in 0..1 {
+                let oscillating_neuron_material = materials.add(StandardMaterial {
+                    emissive: Color::rgb_linear(3000.0, 23000.0, 9000.0),
+                    ..Default::default()
+                });
 
-            let neuron = commands
-                .spawn((
-                    Neuron {
-                        membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
-                        reset_potential: ElectricPotential::new::<millivolt>(-90.0),
-                        threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
-                        resistance: ElectricalResistance::new::<ohm>(1.3),
-                    },
-                    LeakyNeuron {
-                        resting_potential: ElectricPotential::new::<millivolt>(-70.0),
-                    },
-                    OscillatingNeuron {
-                        // random frequency between 0.05 and 0.3
-                        frequency: 0.01 + (0.2 - 0.01) * rand::random::<f64>(),
-                        amplitude: 1.0,
-                    },
-                    PbrBundle {
-                        mesh: mesh.clone(),
-                        material: oscillating_neuron_material,
-                        transform: Transform::from_xyz(x as f32, y as f32, 10.0),
-                        ..Default::default()
-                    },
-                    MembranePlotter::new(),
-                    Collider::cuboid(0.25, 0.25, 0.25),
-                ))
-                // .set_parent(cortical_column.clone())
-                .id();
+                let neuron = commands
+                    .spawn((
+                        Neuron {
+                            membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
+                            reset_potential: ElectricPotential::new::<millivolt>(-90.0),
+                            threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
+                            resistance: ElectricalResistance::new::<ohm>(1.3),
+                        },
+                        LeakyNeuron {
+                            resting_potential: ElectricPotential::new::<millivolt>(-70.0),
+                        },
+                        OscillatingNeuron {
+                            // random frequency between 0.05 and 0.3
+                            frequency: 0.01 + (0.2 - 0.01) * rand::random::<f64>(),
+                            amplitude: 1.0,
+                        },
+                        PbrBundle {
+                            mesh: mesh.clone(),
+                            material: oscillating_neuron_material,
+                            transform: Transform::from_xyz(x as f32, y as f32, z as f32 + 10.0),
+                            ..Default::default()
+                        },
+                        MembranePlotter::new(),
+                        Collider::cuboid(0.25, 0.25, 0.25),
+                    ))
+                    // .set_parent(cortical_column.clone())
+                    .id();
 
-            neurons.push(neuron);
+                neurons.push(neuron);
+            }
         }
     }
 }
@@ -274,6 +277,8 @@ fn mouse_click(
     button_inputs: Res<ButtonInput<MouseButton>>,
     query_camera: Query<(&Camera, &GlobalTransform)>,
     rapier_context: Res<RapierContext>,
+    ui_state: Res<UiState>,
+    egui_settings: Res<bevy_egui::EguiSettings>,
     mut insights: ResMut<Insights>,
 ) {
     let window = windows.get_single().unwrap();
@@ -281,17 +286,35 @@ fn mouse_click(
         if let Some(cursor_position) = window.cursor_position() {
             let (camera, camera_transform) = query_camera.single();
 
-            if let Some(ray) = camera.viewport_to_world(camera_transform, cursor_position) {
-                // Perform ray casting
-                if let Some((entity, _intersection)) = rapier_context.cast_ray(
-                    ray.origin,
-                    *ray.direction,
-                    f32::MAX,
-                    true,
-                    QueryFilter::default(),
-                ) {
-                    insights.selected_entity = Some(entity);
-                    println!("Clicked on entity: {:?}", entity);
+            // Adjust cursor position to account for the viewport
+            let scale_factor = window.scale_factor() * egui_settings.scale_factor;
+
+            let viewport_pos = ui_state.viewport_rect.left_top().to_vec2() * scale_factor;
+            let viewport_size = ui_state.viewport_rect.size() * scale_factor;
+
+            let adjusted_cursor_position =
+                cursor_position - Vec2::new(viewport_pos.x, viewport_pos.y);
+
+            // Check if the adjusted cursor position is within the viewport bounds
+            if adjusted_cursor_position.x >= 0.0
+                && adjusted_cursor_position.y >= 0.0
+                && adjusted_cursor_position.x <= viewport_size.x
+                && adjusted_cursor_position.y <= viewport_size.y
+            {
+                if let Some(ray) =
+                    camera.viewport_to_world(camera_transform, adjusted_cursor_position)
+                {
+                    // Perform ray casting
+                    if let Some((entity, _intersection)) = rapier_context.cast_ray(
+                        ray.origin,
+                        *ray.direction,
+                        f32::MAX,
+                        true,
+                        QueryFilter::default(),
+                    ) {
+                        insights.selected_entity = Some(entity);
+                        println!("Clicked on entity: {:?}", entity);
+                    }
                 }
             }
         }

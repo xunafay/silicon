@@ -1,23 +1,31 @@
-use bevy::{prelude::*, window::PrimaryWindow};
-use bevy_egui::{
-    egui::{self, Color32},
-    EguiContext, EguiContexts, EguiPlugin,
-};
-use egui_plot::{Legend, Line, Plot, VLine};
-use uom::si::{f64::Time, time::second};
-
-use crate::{data::MembranePlotter, neurons::Clock, Insights};
+use bevy::{prelude::*, render::camera::Viewport, window::PrimaryWindow};
+use bevy_egui::{EguiContext, EguiPlugin, EguiSet};
+use state::UiState;
+use transform_gizmo_egui::GizmoMode;
 
 pub struct SiliconUiPlugin;
+
+pub mod state;
 
 impl Plugin for SiliconUiPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(EguiPlugin)
             .add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin) // adds default options and `InspectorEguiImpl`s
-            .add_systems(Update, (neuron_inspect_window, inspector_ui))
+            // .add_systems(Update, (neuron_inspect_window, inspector_ui))
+            .add_systems(
+                PostUpdate,
+                (
+                    show_ui_system
+                        .before(EguiSet::ProcessOutput)
+                        .before(bevy::transform::TransformSystem::TransformPropagate),
+                    set_camera_viewport.after(show_ui_system),
+                ),
+            )
+            .add_systems(Update, set_gizmo_mode)
             .insert_resource(SimulationUiState {
                 simulation_time_slider: 50.0,
-            });
+            })
+            .insert_resource(UiState::new());
     }
 }
 
@@ -26,73 +34,7 @@ pub struct SimulationUiState {
     simulation_time_slider: f64,
 }
 
-fn neuron_inspect_window(
-    mut clock: ResMut<Clock>,
-    insights: Res<Insights>,
-    mut state: ResMut<SimulationUiState>,
-    mut contexts: EguiContexts,
-    plotters: Query<(Entity, &MembranePlotter)>,
-) {
-    let selected_plotter = plotters.iter().find(|(entity, _)| {
-        insights
-            .selected_entity
-            .map_or(false, |selected_entity| *entity == selected_entity)
-    });
-    egui::Window::new("Simulation").show(contexts.ctx_mut(), |ui| {
-        ui.label(format!("Time: {:.2}", clock.time));
-        ui.add(
-            egui::Slider::new(&mut state.simulation_time_slider, 0.0..=100.0)
-                .clamp_to_range(false)
-                .text("Time to simulate in ms"),
-        );
-
-        let button = ui
-            .button("Run")
-            .on_hover_text("Run the simulation for the specified time");
-
-        ui.add(
-            egui::Slider::new(&mut clock.tau, 0.001..=0.1)
-                .clamp_to_range(false)
-                .text("Time constant in ms"),
-        );
-
-        if button.clicked() {
-            info!("Running simulation for {} ms", state.simulation_time_slider);
-        }
-    });
-
-    egui::Window::new("Neuron Inspector").show(contexts.ctx_mut(), |ui| {
-        if insights.selected_entity.is_none() {
-            ui.label("No neuron selected");
-            return;
-        }
-
-        let plot = Plot::new("Test").legend(Legend::default());
-
-        if let Some((entity, plotter)) = selected_plotter {
-            plot.show(ui, |plot_ui| {
-                let spikes = plotter
-                    .spike_lines(Time::new::<second>(100.0), Time::new::<second>(clock.time));
-                for spike in spikes {
-                    plot_ui.vline(VLine::new(spike).color(Color32::RED));
-                }
-
-                plot_ui.line(
-                    Line::new(
-                        plotter.plot_points(
-                            Time::new::<second>(100.0),
-                            Time::new::<second>(clock.time),
-                        ),
-                    )
-                    .name(format!("{:?}", entity))
-                    .color(Color32::BLUE),
-                );
-            });
-        }
-    });
-}
-
-fn inspector_ui(world: &mut World) {
+fn show_ui_system(world: &mut World) {
     let Ok(egui_context) = world
         .query_filtered::<&mut EguiContext, With<PrimaryWindow>>()
         .get_single(world)
@@ -101,21 +43,44 @@ fn inspector_ui(world: &mut World) {
     };
     let mut egui_context = egui_context.clone();
 
-    egui::Window::new("Inspector")
-        .default_open(false)
-        .show(egui_context.get_mut(), |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                // equivalent to `WorldInspectorPlugin`
-                bevy_inspector_egui::bevy_inspector::ui_for_world(world, ui);
+    world.resource_scope::<UiState, _>(|world, mut ui_state| {
+        ui_state.ui(world, egui_context.get_mut())
+    });
+}
 
-                egui::CollapsingHeader::new("Materials").show(ui, |ui| {
-                    bevy_inspector_egui::bevy_inspector::ui_for_assets::<StandardMaterial>(
-                        world, ui,
-                    );
-                });
+// make camera only render to view not obstructed by UI
+fn set_camera_viewport(
+    ui_state: Res<UiState>,
+    primary_window: Query<&mut Window, With<PrimaryWindow>>,
+    egui_settings: Res<bevy_egui::EguiSettings>,
+    mut cameras: Query<&mut Camera>,
+) {
+    let mut cam = cameras.single_mut();
 
-                ui.heading("Entities");
-                bevy_inspector_egui::bevy_inspector::ui_for_world_entities(world, ui);
-            });
-        });
+    let Ok(window) = primary_window.get_single() else {
+        return;
+    };
+
+    let scale_factor = window.scale_factor() * egui_settings.scale_factor;
+
+    let viewport_pos = ui_state.viewport_rect.left_top().to_vec2() * scale_factor;
+    let viewport_size = ui_state.viewport_rect.size() * scale_factor;
+
+    cam.viewport = Some(Viewport {
+        physical_position: UVec2::new(viewport_pos.x as u32, viewport_pos.y as u32),
+        physical_size: UVec2::new(viewport_size.x as u32, viewport_size.y as u32),
+        depth: 0.0..1.0,
+    });
+}
+
+fn set_gizmo_mode(input: Res<ButtonInput<KeyCode>>, mut ui_state: ResMut<UiState>) {
+    for (key, mode) in [
+        (KeyCode::KeyR, GizmoMode::RotateX),
+        (KeyCode::KeyT, GizmoMode::TranslateXY),
+        (KeyCode::KeyS, GizmoMode::ScaleXY),
+    ] {
+        if input.just_pressed(key) {
+            ui_state.gizmo_mode = mode;
+        }
+    }
 }
