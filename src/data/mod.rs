@@ -57,7 +57,7 @@ impl MembranePlotter {
         self.spikes
             .iter()
             .filter(|time| **time >= current_time.get::<second>() - time_span.get::<second>())
-            .map(|time| *time)
+            .copied()
             .collect()
     }
 }

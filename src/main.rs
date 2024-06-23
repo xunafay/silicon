@@ -19,7 +19,7 @@ use bevy_rapier3d::{
 };
 use data::{MembranePlotter, NeuronDataCollectionPlugin};
 use neurons::{
-    cortical_column::CorticalColumn,
+    cortical_column::{ColumnLayer, MiniColumn},
     leaky::LeakyNeuron,
     synapse::{Synapse, SynapseType},
     Neuron, NeuronRuntimePlugin, OscillatingNeuron, Refactory,
@@ -73,7 +73,7 @@ impl Plugin for SiliconPlugin {
                         // this thread setup is optimized for a compute-heavy workload and not asset loading
                         compute: TaskPoolThreadAssignmentPolicy {
                             min_threads: available_parallelism(),
-                            max_threads: std::usize::MAX,
+                            max_threads: usize::MAX,
                             percent: 1.0,
                         },
                         ..default()
@@ -85,7 +85,7 @@ impl Plugin for SiliconPlugin {
         .add_plugins(NeuronDataCollectionPlugin)
         .add_plugins(SiliconUiPlugin)
         .add_plugins(NeuronRuntimePlugin)
-        .add_plugins(FrameTimeDiagnosticsPlugin::default())
+        .add_plugins(FrameTimeDiagnosticsPlugin)
         // .add_plugins(RapierDebugRenderPlugin::default())
         .insert_resource(Msaa::Sample8)
         .insert_resource(Insights {
@@ -115,10 +115,13 @@ fn create_neurons(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    commands.spawn((
-        CorticalColumn { x: 0, y: 0 },
-        Transform::from_xyz(0.0, 0.0, 0.0),
-    ));
+    let minicolumn = commands
+        .spawn((
+            MiniColumn,
+            Transform::from_xyz(0.0, 0.0, 0.0),
+            GlobalTransform::default(),
+        ))
+        .id();
 
     let mesh = meshes.add(Cuboid::new(0.5, 0.5, 0.5).mesh());
 
@@ -126,7 +129,7 @@ fn create_neurons(
 
     for x in 0..5 {
         for y in 0..5 {
-            for z in 0..1 {
+            for z in 0..2 {
                 let leaky_neuron_material = materials.add(StandardMaterial {
                     emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
                     ..Default::default()
@@ -156,8 +159,51 @@ fn create_neurons(
                         },
                         MembranePlotter::new(),
                         Collider::cuboid(0.25, 0.25, 0.25),
+                        ColumnLayer::L2,
                     ))
-                    // .set_parent(cortical_column.clone())
+                    .set_parent(minicolumn)
+                    .id();
+
+                neurons.push(neuron);
+            }
+        }
+    }
+
+    for x in 0..5 {
+        for y in 0..5 {
+            for z in 0..2 {
+                let leaky_neuron_material = materials.add(StandardMaterial {
+                    emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
+                    ..Default::default()
+                });
+
+                let neuron = commands
+                    .spawn((
+                        Neuron {
+                            membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
+                            reset_potential: ElectricPotential::new::<millivolt>(-90.0),
+                            threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
+                            resistance: ElectricalResistance::new::<ohm>(1.3),
+                        },
+                        LeakyNeuron {
+                            resting_potential: ElectricPotential::new::<millivolt>(-70.0),
+                        },
+                        Refactory {
+                            refractory_period: SiTime::new::<second>(0.09),
+                            refactory_counter: SiTime::ZERO,
+                        },
+                        PbrBundle {
+                            mesh: mesh.clone(),
+                            material: leaky_neuron_material,
+                            visibility: Visibility::Visible,
+                            transform: Transform::from_xyz(x as f32, y as f32, z as f32 + -10.0),
+                            ..Default::default()
+                        },
+                        MembranePlotter::new(),
+                        Collider::cuboid(0.25, 0.25, 0.25),
+                        ColumnLayer::L3,
+                    ))
+                    .set_parent(minicolumn)
                     .id();
 
                 neurons.push(neuron);
@@ -167,7 +213,7 @@ fn create_neurons(
 
     for x in 0..3 {
         for y in 0..3 {
-            for z in 0..1 {
+            for z in 0..2 {
                 let oscillating_neuron_material = materials.add(StandardMaterial {
                     emissive: Color::rgb_linear(3000.0, 23000.0, 9000.0),
                     ..Default::default()
@@ -192,13 +238,14 @@ fn create_neurons(
                         PbrBundle {
                             mesh: mesh.clone(),
                             material: oscillating_neuron_material,
-                            transform: Transform::from_xyz(x as f32, y as f32, z as f32 + 10.0),
+                            transform: Transform::from_xyz(x as f32, y as f32, z as f32),
                             ..Default::default()
                         },
                         MembranePlotter::new(),
                         Collider::cuboid(0.25, 0.25, 0.25),
+                        ColumnLayer::L4,
                     ))
-                    // .set_parent(cortical_column.clone())
+                    .set_parent(minicolumn)
                     .id();
 
                 neurons.push(neuron);
@@ -213,7 +260,7 @@ fn create_synapses(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut oscillating_neuron_query: Query<(Entity, &mut Neuron, &Transform, &OscillatingNeuron)>,
     leaky_neuron_query: Query<
-        (Entity, &Neuron, &Transform, &LeakyNeuron),
+        (Entity, &Neuron, &Transform, &LeakyNeuron, &Parent),
         Without<OscillatingNeuron>,
     >,
 ) {
@@ -226,7 +273,7 @@ fn create_synapses(
 
     for (pre_entity, _pre_neuron, pre_transform, _) in oscillating_neuron_query.iter_mut() {
         for _ in 0..12 {
-            let (post_entity, _post_neuron, post_transform, _) = leaky_neuron_query
+            let (post_entity, _post_neuron, post_transform, _, parent) = leaky_neuron_query
                 .iter()
                 .choose(&mut rand::thread_rng())
                 .unwrap();
@@ -241,8 +288,8 @@ fn create_synapses(
             let synapse = commands
                 .spawn((
                     Synapse {
-                        source: pre_entity.clone(),
-                        target: post_entity.clone(),
+                        source: pre_entity,
+                        target: post_entity,
                         // weight between 0 and 1
                         weight: rand::random::<f64>(),
                         delay: 1,
@@ -260,6 +307,7 @@ fn create_synapses(
                     },
                     // Collider::capsule_y(length / 2.0, 0.05),
                 ))
+                .set_parent(parent.get())
                 .id();
 
             info!(
@@ -323,56 +371,30 @@ fn mouse_click(
 
 fn update_materials(
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut neuron_query: Query<(Entity, &Neuron, &LeakyNeuron, &Handle<StandardMaterial>)>,
+    mut neuron_query: Query<(
+        Entity,
+        &Neuron,
+        &LeakyNeuron,
+        &Handle<StandardMaterial>,
+        &ColumnLayer,
+    )>,
 ) {
-    for (_, neuron, leaky, material_handle) in neuron_query.iter_mut() {
+    for (_, neuron, leaky, material_handle, layer) in neuron_query.iter_mut() {
         let material = materials.get_mut(material_handle).unwrap();
         if neuron.membrane_potential < leaky.resting_potential {
-            material.emissive = Color::rgb_linear(23000.0, 9000.0, 3000.0);
+            material.emissive = layer.get_color_from_potential(
+                leaky.resting_potential.get::<millivolt>() as f32,
+                leaky.resting_potential.get::<millivolt>() as f32,
+                neuron.threshold_potential.get::<millivolt>() as f32,
+            );
         } else {
-            material.emissive = membrane_potential_to_emissive(
+            material.emissive = layer.get_color_from_potential(
                 neuron.membrane_potential.get::<millivolt>() as f32,
                 leaky.resting_potential.get::<millivolt>() as f32,
                 neuron.threshold_potential.get::<millivolt>() as f32,
             );
         }
     }
-}
-
-// ranges from Color::rgb_linear(23000.0, 9000.0, 3000.0) to Color::rgb_linear(0.0, 0.0, 0.0) based on
-// membrane potential compared to resting potential
-fn membrane_potential_to_emissive(
-    membrane_potential: f32,
-    resting_potential: f32,
-    threshold_potential: f32,
-) -> Color {
-    Color::rgb_linear(
-        refit_to_range(
-            membrane_potential,
-            resting_potential,
-            threshold_potential,
-            0.0,
-            23000.0,
-        ),
-        refit_to_range(
-            membrane_potential,
-            resting_potential,
-            threshold_potential,
-            0.0,
-            9000.0,
-        ),
-        refit_to_range(
-            membrane_potential,
-            resting_potential,
-            threshold_potential,
-            0.0,
-            3000.0,
-        ),
-    )
-}
-
-fn refit_to_range(n: f32, start1: f32, stop1: f32, start2: f32, stop2: f32) -> f32 {
-    ((n - start1) / (stop1 - start1)) * (stop2 - start2) + start2
 }
 
 fn setup_scene(mut commands: Commands) {

@@ -50,9 +50,9 @@ impl UiState {
             NodeIndex::root(),
             0.8,
             vec![
+                EguiWindow::NeuronInspector,
                 EguiWindow::Resources,
                 EguiWindow::Assets,
-                EguiWindow::NeuronInspector,
             ],
         );
         let [_game, _hierarchy] = tree.split_right(
