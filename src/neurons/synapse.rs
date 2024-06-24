@@ -1,3 +1,5 @@
+use std::default;
+
 use bevy::prelude::*;
 use uom::{
     si::{
@@ -29,14 +31,24 @@ pub fn update_synapses(
 
                 let delta_v = synapse.weight * (threshold_potential - resting_potential);
                 // trace!("Synapse fired: {:?}, delta_v: {:?}", synapse, delta_v);
-                target_neuron.membrane_potential += ElectricPotential::new::<millivolt>(delta_v);
+                match synapse.synapse_type {
+                    SynapseType::Excitatory => {
+                        target_neuron.membrane_potential +=
+                            ElectricPotential::new::<millivolt>(delta_v);
+                    }
+                    SynapseType::Inhibitory => {
+                        target_neuron.membrane_potential -=
+                            ElectricPotential::new::<millivolt>(delta_v);
+                    }
+                }
             }
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, Default)]
 pub enum SynapseType {
+    #[default]
     Excitatory,
     Inhibitory,
 }

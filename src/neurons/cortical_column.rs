@@ -44,21 +44,21 @@ impl ColumnLayer {
                 resting_potential,
                 threshold_potential,
                 0.0,
-                color.r() * 1000.0,
+                color.r() * 2000.0,
             ),
             refit_to_range(
                 membrane_potential,
                 resting_potential,
                 threshold_potential,
                 0.0,
-                color.g() * 1000.0,
+                color.g() * 2000.0,
             ),
             refit_to_range(
                 membrane_potential,
                 resting_potential,
                 threshold_potential,
                 0.0,
-                color.b() * 1000.0,
+                color.b() * 2000.0,
             ),
         )
     }

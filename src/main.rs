@@ -127,9 +127,9 @@ fn create_neurons(
 
     let mut neurons = vec![];
 
-    for x in 0..5 {
-        for y in 0..5 {
-            for z in 0..2 {
+    for x in -1..1 {
+        for y in -1..1 {
+            for z in 0..1 {
                 let leaky_neuron_material = materials.add(StandardMaterial {
                     emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
                     ..Default::default()
@@ -154,12 +154,12 @@ fn create_neurons(
                             mesh: mesh.clone(),
                             material: leaky_neuron_material,
                             visibility: Visibility::Visible,
-                            transform: Transform::from_xyz(x as f32, y as f32, z as f32 + -5.0),
+                            transform: Transform::from_xyz(x as f32, y as f32, z as f32 + -15.0),
                             ..Default::default()
                         },
                         MembranePlotter::new(),
                         Collider::cuboid(0.25, 0.25, 0.25),
-                        ColumnLayer::L2,
+                        ColumnLayer::L1,
                     ))
                     .set_parent(minicolumn)
                     .id();
@@ -169,9 +169,9 @@ fn create_neurons(
         }
     }
 
-    for x in 0..5 {
-        for y in 0..5 {
-            for z in 0..2 {
+    for x in -2..3 {
+        for y in -2..3 {
+            for z in 0..1 {
                 let leaky_neuron_material = materials.add(StandardMaterial {
                     emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
                     ..Default::default()
@@ -201,6 +201,48 @@ fn create_neurons(
                         },
                         MembranePlotter::new(),
                         Collider::cuboid(0.25, 0.25, 0.25),
+                        ColumnLayer::L2,
+                    ))
+                    .set_parent(minicolumn)
+                    .id();
+
+                neurons.push(neuron);
+            }
+        }
+    }
+
+    for x in -2..3 {
+        for y in -2..3 {
+            for z in 0..1 {
+                let leaky_neuron_material = materials.add(StandardMaterial {
+                    emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
+                    ..Default::default()
+                });
+
+                let neuron = commands
+                    .spawn((
+                        Neuron {
+                            membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
+                            reset_potential: ElectricPotential::new::<millivolt>(-90.0),
+                            threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
+                            resistance: ElectricalResistance::new::<ohm>(1.3),
+                        },
+                        LeakyNeuron {
+                            resting_potential: ElectricPotential::new::<millivolt>(-70.0),
+                        },
+                        Refactory {
+                            refractory_period: SiTime::new::<second>(0.09),
+                            refactory_counter: SiTime::ZERO,
+                        },
+                        PbrBundle {
+                            mesh: mesh.clone(),
+                            material: leaky_neuron_material,
+                            visibility: Visibility::Visible,
+                            transform: Transform::from_xyz(x as f32, y as f32, z as f32 + -5.0),
+                            ..Default::default()
+                        },
+                        MembranePlotter::new(),
+                        Collider::cuboid(0.25, 0.25, 0.25),
                         ColumnLayer::L3,
                     ))
                     .set_parent(minicolumn)
@@ -211,9 +253,9 @@ fn create_neurons(
         }
     }
 
-    for x in 0..3 {
-        for y in 0..3 {
-            for z in 0..2 {
+    for x in -2..2 {
+        for y in -2..2 {
+            for z in 0..1 {
                 let oscillating_neuron_material = materials.add(StandardMaterial {
                     emissive: Color::rgb_linear(3000.0, 23000.0, 9000.0),
                     ..Default::default()
@@ -252,6 +294,90 @@ fn create_neurons(
             }
         }
     }
+
+    for x in -2..2 {
+        for y in -2..2 {
+            for z in 0..1 {
+                let leaky_neuron_material = materials.add(StandardMaterial {
+                    emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
+                    ..Default::default()
+                });
+
+                let neuron = commands
+                    .spawn((
+                        Neuron {
+                            membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
+                            reset_potential: ElectricPotential::new::<millivolt>(-90.0),
+                            threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
+                            resistance: ElectricalResistance::new::<ohm>(1.3),
+                        },
+                        LeakyNeuron {
+                            resting_potential: ElectricPotential::new::<millivolt>(-70.0),
+                        },
+                        Refactory {
+                            refractory_period: SiTime::new::<second>(0.09),
+                            refactory_counter: SiTime::ZERO,
+                        },
+                        PbrBundle {
+                            mesh: mesh.clone(),
+                            material: leaky_neuron_material,
+                            visibility: Visibility::Visible,
+                            transform: Transform::from_xyz(x as f32, y as f32, z as f32 + 5.0),
+                            ..Default::default()
+                        },
+                        MembranePlotter::new(),
+                        Collider::cuboid(0.25, 0.25, 0.25),
+                        ColumnLayer::L5,
+                    ))
+                    .set_parent(minicolumn)
+                    .id();
+
+                neurons.push(neuron);
+            }
+        }
+    }
+
+    for x in -1..2 {
+        for y in -1..2 {
+            for z in 0..1 {
+                let leaky_neuron_material = materials.add(StandardMaterial {
+                    emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
+                    ..Default::default()
+                });
+
+                let neuron = commands
+                    .spawn((
+                        Neuron {
+                            membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
+                            reset_potential: ElectricPotential::new::<millivolt>(-90.0),
+                            threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
+                            resistance: ElectricalResistance::new::<ohm>(1.3),
+                        },
+                        LeakyNeuron {
+                            resting_potential: ElectricPotential::new::<millivolt>(-70.0),
+                        },
+                        Refactory {
+                            refractory_period: SiTime::new::<second>(0.09),
+                            refactory_counter: SiTime::ZERO,
+                        },
+                        PbrBundle {
+                            mesh: mesh.clone(),
+                            material: leaky_neuron_material,
+                            visibility: Visibility::Visible,
+                            transform: Transform::from_xyz(x as f32, y as f32, z as f32 + 10.0),
+                            ..Default::default()
+                        },
+                        MembranePlotter::new(),
+                        Collider::cuboid(0.25, 0.25, 0.25),
+                        ColumnLayer::L6,
+                    ))
+                    .set_parent(minicolumn)
+                    .id();
+
+                neurons.push(neuron);
+            }
+        }
+    }
 }
 
 fn create_synapses(
@@ -264,15 +390,22 @@ fn create_synapses(
         Without<OscillatingNeuron>,
     >,
 ) {
-    let synapse_material = materials.add(StandardMaterial {
+    let synapse_material_excitory = materials.add(StandardMaterial {
         base_color: Color::rgba(0.4, 0.4, 1.0, 0.5),
         emissive: Color::rgb_linear(0.3, 0.3, 200.0), // Bright green emissive color
         alpha_mode: AlphaMode::Blend,                 // Enable blending for translucency
         ..Default::default()
     });
 
+    let synapse_material_inhibitory = materials.add(StandardMaterial {
+        base_color: Color::rgba(1.0, 0.4, 0.4, 0.5),
+        emissive: Color::rgb_linear(200.0, 0.3, 0.3), // Bright red emissive color
+        alpha_mode: AlphaMode::Blend,                 // Enable blending for translucency
+        ..Default::default()
+    });
+
     for (pre_entity, _pre_neuron, pre_transform, _) in oscillating_neuron_query.iter_mut() {
-        for _ in 0..12 {
+        for _ in 0..14 {
             let (post_entity, _post_neuron, post_transform, _, parent) = leaky_neuron_query
                 .iter()
                 .choose(&mut rand::thread_rng())
@@ -285,6 +418,12 @@ fn create_synapses(
             let rotation = Quat::from_rotation_arc(Vec3::Y, normalized_direction);
             let synapse_mesh = meshes.add(Capsule3d::new(0.05, length).mesh());
 
+            let synapse_type = if rand::random::<f64>() > 0.2 {
+                SynapseType::Excitatory
+            } else {
+                SynapseType::Inhibitory
+            };
+
             let synapse = commands
                 .spawn((
                     Synapse {
@@ -293,11 +432,14 @@ fn create_synapses(
                         // weight between 0 and 1
                         weight: rand::random::<f64>(),
                         delay: 1,
-                        synapse_type: SynapseType::Excitatory,
+                        synapse_type: synapse_type,
                     },
                     PbrBundle {
                         mesh: synapse_mesh,
-                        material: synapse_material.clone(),
+                        material: match synapse_type {
+                            SynapseType::Excitatory => synapse_material_excitory.clone(),
+                            SynapseType::Inhibitory => synapse_material_inhibitory.clone(),
+                        },
                         transform: Transform {
                             translation: midpoint,
                             rotation,
