@@ -1,68 +1,46 @@
 use bevy::prelude::*;
-use uom::{
-    si::{
-        electric_potential::millivolt,
-        f64::{ElectricPotential, Time as SiTime},
-        time::second,
-    },
-    ConstZero,
-};
+use uom::si::{f64::Time as SiTime, time::second};
 
-use crate::data::MembranePlotter;
-
-use super::{Clock, Neuron, Refactory, Spike, SpikeEvent, SpikeRecorder};
+use super::Neuron;
 
 #[derive(Component, Debug)]
-pub struct LeakyNeuron {
-    pub resting_potential: ElectricPotential,
+pub struct LifNeuron {
+    pub membrane_potential: f64,
+    pub reset_potential: f64,
+    pub threshold_potential: f64,
+    pub resistance: f64,
+    pub resting_potential: f64,
+    pub refactory_period: f64,
+    pub refactory_counter: f64,
 }
 
-pub fn update_leaky_neurons(
-    clock: ResMut<Clock>,
-    mut neuron_query: Query<(
-        Entity,
-        &mut Neuron,
-        &mut LeakyNeuron,
-        &mut Refactory,
-        Option<&mut SpikeRecorder>,
-        Option<&mut MembranePlotter>,
-    )>,
-    mut spike_writer: EventWriter<SpikeEvent>,
-) {
-    for (entity, mut neuron, leaky, mut refactory, spike_recorder, plotter) in
-        neuron_query.iter_mut()
-    {
-        if refactory.refactory_counter > SiTime::ZERO {
-            refactory.refactory_counter -= SiTime::new::<second>(clock.tau);
-            continue;
+impl Neuron for LifNeuron {
+    fn update(&mut self, tau: SiTime) -> bool {
+        if self.refactory_counter > 0.0 {
+            self.refactory_counter -= tau.get::<second>();
+            return false;
         }
 
-        let delta_v = (leaky.resting_potential.get::<millivolt>()
-            - neuron.membrane_potential.get::<millivolt>())
-            * clock.tau;
+        let delta_v = (self.resting_potential - self.membrane_potential) * tau.get::<second>()
+            / self.resistance;
 
-        neuron.membrane_potential += ElectricPotential::new::<millivolt>(delta_v);
+        self.membrane_potential += delta_v;
 
-        if neuron.membrane_potential > neuron.threshold_potential {
-            neuron.membrane_potential = neuron.reset_potential;
-            refactory.refactory_counter = refactory.refractory_period;
-
-            // trace!("Leaky neuron fired: {:?}", entity);
-            spike_writer.send(SpikeEvent {
-                time: SiTime::new::<second>(clock.time),
-                neuron: entity,
-            });
-
-            if let Some(mut spike_recorder) = spike_recorder {
-                spike_recorder.spikes.push(Spike {
-                    time: SiTime::new::<second>(clock.time),
-                    neuron: entity,
-                });
-            }
-
-            if let Some(mut plotter) = plotter {
-                plotter.add_spike(clock.time);
-            }
+        if self.membrane_potential > self.threshold_potential {
+            self.membrane_potential = self.reset_potential;
+            self.refactory_counter = self.refactory_period;
+            return true;
         }
+
+        false
+    }
+
+    fn get_membrane_potential(&self) -> f64 {
+        self.membrane_potential
+    }
+
+    fn add_membrane_potential(&mut self, delta_v: f64) -> f64 {
+        self.membrane_potential += delta_v;
+        self.membrane_potential
     }
 }

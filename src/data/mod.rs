@@ -5,13 +5,19 @@ use bevy::{
 use egui_plot::PlotPoints;
 use uom::si::{electric_potential::millivolt, f64::Time, time::second};
 
-use crate::neurons::{Clock, Neuron};
+use crate::neurons::{leaky::LifNeuron, Clock, IzhikevichNeuron, Neuron};
 
 pub struct NeuronDataCollectionPlugin;
 
 impl Plugin for NeuronDataCollectionPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, update_plotters);
+        app.add_systems(
+            Update,
+            (
+                update_plotters::<LifNeuron>,
+                update_plotters::<IzhikevichNeuron>,
+            ),
+        );
     }
 }
 
@@ -62,10 +68,13 @@ impl MembranePlotter {
     }
 }
 
-fn update_plotters(mut plotter_query: Query<(&Neuron, &mut MembranePlotter)>, clock: Res<Clock>) {
+fn update_plotters<T: Component + Neuron>(
+    mut plotter_query: Query<(&T, &mut MembranePlotter)>,
+    clock: Res<Clock>,
+) {
     for (neuron, mut membrane_plotter) in plotter_query.iter_mut() {
         membrane_plotter.add_point(
-            neuron.membrane_potential.get::<millivolt>(),
+            neuron.get_membrane_potential(),
             Time::new::<second>(clock.time).get::<second>(),
         );
     }

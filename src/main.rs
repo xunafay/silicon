@@ -20,9 +20,10 @@ use bevy_rapier3d::{
 use data::{MembranePlotter, NeuronDataCollectionPlugin};
 use neurons::{
     cortical_column::{ColumnLayer, MiniColumn},
-    leaky::LeakyNeuron,
-    synapse::{Synapse, SynapseType},
-    Neuron, NeuronRuntimePlugin, OscillatingNeuron, Refactory,
+    leaky::LifNeuron,
+    synapse::{AllowSynapse, Synapse, SynapseType},
+    Clock, IzhikevichNeuron, Neuron, NeuronRuntimePlugin, OscillatingNeuron, Refactory, Spike,
+    SpikeEvent, SpikeRecorder,
 };
 use rand::seq::IteratorRandom;
 use ui::{state::UiState, SiliconUiPlugin};
@@ -92,13 +93,28 @@ impl Plugin for SiliconPlugin {
             selected_entity: None,
         })
         .add_systems(
+            Update,
+            (
+                update_neurons::<IzhikevichNeuron>,
+                update_neurons::<LifNeuron>,
+            ),
+        )
+        .add_systems(
             Startup,
-            ((create_neurons, create_synapses).chain(), setup_scene),
+            (
+                (create_neurons, create_synapses::<IzhikevichNeuron>).chain(),
+                setup_scene,
+            ),
         )
         // .add_systems(PostStartup, hide_meshes) // hide meshes if you need some extra performance
         .add_systems(
             Update,
-            (update_bloom_settings, update_materials, mouse_click),
+            (
+                update_bloom_settings,
+                update_neuron_materials::<LifNeuron>,
+                update_neuron_materials::<IzhikevichNeuron>,
+                mouse_click,
+            ),
         );
     }
 }
@@ -137,14 +153,14 @@ fn create_neurons(
 
                 let neuron = commands
                     .spawn((
-                        Neuron {
-                            membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
-                            reset_potential: ElectricPotential::new::<millivolt>(-90.0),
-                            threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
-                            resistance: ElectricalResistance::new::<ohm>(1.3),
-                        },
-                        LeakyNeuron {
-                            resting_potential: ElectricPotential::new::<millivolt>(-70.0),
+                        LifNeuron {
+                            membrane_potential: -70.0,
+                            reset_potential: -90.0,
+                            threshold_potential: -55.0,
+                            resistance: 1.3,
+                            resting_potential: -70.0,
+                            refactory_period: 0.09,
+                            refactory_counter: 0.0,
                         },
                         Refactory {
                             refractory_period: SiTime::new::<second>(0.09),
@@ -160,6 +176,7 @@ fn create_neurons(
                         MembranePlotter::new(),
                         Collider::cuboid(0.25, 0.25, 0.25),
                         ColumnLayer::L1,
+                        AllowSynapse,
                     ))
                     .set_parent(minicolumn)
                     .id();
@@ -179,18 +196,13 @@ fn create_neurons(
 
                 let neuron = commands
                     .spawn((
-                        Neuron {
-                            membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
-                            reset_potential: ElectricPotential::new::<millivolt>(-90.0),
-                            threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
-                            resistance: ElectricalResistance::new::<ohm>(1.3),
-                        },
-                        LeakyNeuron {
-                            resting_potential: ElectricPotential::new::<millivolt>(-70.0),
-                        },
-                        Refactory {
-                            refractory_period: SiTime::new::<second>(0.09),
-                            refactory_counter: SiTime::ZERO,
+                        IzhikevichNeuron {
+                            a: 0.1,
+                            b: 0.26,
+                            c: -60.0,
+                            d: 5.0,
+                            v: -65.0,
+                            u: -14.0,
                         },
                         PbrBundle {
                             mesh: mesh.clone(),
@@ -202,6 +214,7 @@ fn create_neurons(
                         MembranePlotter::new(),
                         Collider::cuboid(0.25, 0.25, 0.25),
                         ColumnLayer::L2,
+                        AllowSynapse,
                     ))
                     .set_parent(minicolumn)
                     .id();
@@ -221,14 +234,14 @@ fn create_neurons(
 
                 let neuron = commands
                     .spawn((
-                        Neuron {
-                            membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
-                            reset_potential: ElectricPotential::new::<millivolt>(-90.0),
-                            threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
-                            resistance: ElectricalResistance::new::<ohm>(1.3),
-                        },
-                        LeakyNeuron {
-                            resting_potential: ElectricPotential::new::<millivolt>(-70.0),
+                        LifNeuron {
+                            membrane_potential: -70.0,
+                            reset_potential: -90.0,
+                            threshold_potential: -55.0,
+                            resistance: 1.3,
+                            resting_potential: -70.0,
+                            refactory_period: 0.09,
+                            refactory_counter: 0.0,
                         },
                         Refactory {
                             refractory_period: SiTime::new::<second>(0.09),
@@ -244,6 +257,7 @@ fn create_neurons(
                         MembranePlotter::new(),
                         Collider::cuboid(0.25, 0.25, 0.25),
                         ColumnLayer::L3,
+                        AllowSynapse,
                     ))
                     .set_parent(minicolumn)
                     .id();
@@ -263,14 +277,14 @@ fn create_neurons(
 
                 let neuron = commands
                     .spawn((
-                        Neuron {
-                            membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
-                            reset_potential: ElectricPotential::new::<millivolt>(-90.0),
-                            threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
-                            resistance: ElectricalResistance::new::<ohm>(1.3),
-                        },
-                        LeakyNeuron {
-                            resting_potential: ElectricPotential::new::<millivolt>(-70.0),
+                        LifNeuron {
+                            membrane_potential: -70.0,
+                            reset_potential: -90.0,
+                            threshold_potential: -55.0,
+                            resistance: 1.3,
+                            resting_potential: -70.0,
+                            refactory_period: 0.09,
+                            refactory_counter: 0.0,
                         },
                         OscillatingNeuron {
                             // random frequency between 0.05 and 0.3
@@ -305,14 +319,14 @@ fn create_neurons(
 
                 let neuron = commands
                     .spawn((
-                        Neuron {
-                            membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
-                            reset_potential: ElectricPotential::new::<millivolt>(-90.0),
-                            threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
-                            resistance: ElectricalResistance::new::<ohm>(1.3),
-                        },
-                        LeakyNeuron {
-                            resting_potential: ElectricPotential::new::<millivolt>(-70.0),
+                        LifNeuron {
+                            membrane_potential: -70.0,
+                            reset_potential: -90.0,
+                            threshold_potential: -55.0,
+                            resistance: 1.3,
+                            resting_potential: -70.0,
+                            refactory_period: 0.09,
+                            refactory_counter: 0.0,
                         },
                         Refactory {
                             refractory_period: SiTime::new::<second>(0.09),
@@ -328,6 +342,7 @@ fn create_neurons(
                         MembranePlotter::new(),
                         Collider::cuboid(0.25, 0.25, 0.25),
                         ColumnLayer::L5,
+                        AllowSynapse,
                     ))
                     .set_parent(minicolumn)
                     .id();
@@ -347,18 +362,14 @@ fn create_neurons(
 
                 let neuron = commands
                     .spawn((
-                        Neuron {
-                            membrane_potential: ElectricPotential::new::<millivolt>(-70.0),
-                            reset_potential: ElectricPotential::new::<millivolt>(-90.0),
-                            threshold_potential: ElectricPotential::new::<millivolt>(-55.0),
-                            resistance: ElectricalResistance::new::<ohm>(1.3),
-                        },
-                        LeakyNeuron {
-                            resting_potential: ElectricPotential::new::<millivolt>(-70.0),
-                        },
-                        Refactory {
-                            refractory_period: SiTime::new::<second>(0.09),
-                            refactory_counter: SiTime::ZERO,
+                        LifNeuron {
+                            membrane_potential: -70.0,
+                            reset_potential: -90.0,
+                            threshold_potential: -55.0,
+                            resistance: 1.3,
+                            resting_potential: -70.0,
+                            refactory_period: 0.09,
+                            refactory_counter: 0.0,
                         },
                         PbrBundle {
                             mesh: mesh.clone(),
@@ -370,6 +381,7 @@ fn create_neurons(
                         MembranePlotter::new(),
                         Collider::cuboid(0.25, 0.25, 0.25),
                         ColumnLayer::L6,
+                        AllowSynapse,
                     ))
                     .set_parent(minicolumn)
                     .id();
@@ -380,15 +392,11 @@ fn create_neurons(
     }
 }
 
-fn create_synapses(
+fn create_synapses<T: Component + Neuron>(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut oscillating_neuron_query: Query<(Entity, &mut Neuron, &Transform, &OscillatingNeuron)>,
-    leaky_neuron_query: Query<
-        (Entity, &Neuron, &Transform, &LeakyNeuron, &Parent),
-        Without<OscillatingNeuron>,
-    >,
+    neuron_query: Query<(Entity, &AllowSynapse, &Transform, &Parent)>,
 ) {
     let synapse_material_excitory = materials.add(StandardMaterial {
         base_color: Color::rgba(0.4, 0.4, 1.0, 0.5),
@@ -404,60 +412,94 @@ fn create_synapses(
         ..Default::default()
     });
 
-    for (pre_entity, _pre_neuron, pre_transform, _) in oscillating_neuron_query.iter_mut() {
-        for _ in 0..14 {
-            let (post_entity, _post_neuron, post_transform, _, parent) = leaky_neuron_query
-                .iter()
-                .choose(&mut rand::thread_rng())
-                .unwrap();
+    let mut iter = neuron_query.iter_combinations();
 
-            let midpoint = (pre_transform.translation + post_transform.translation) / 2.0;
-            let direction = post_transform.translation - pre_transform.translation;
-            let length = direction.length();
-            let normalized_direction = direction.normalize();
-            let rotation = Quat::from_rotation_arc(Vec3::Y, normalized_direction);
-            let synapse_mesh = meshes.add(Capsule3d::new(0.05, length).mesh());
+    while let Some([(pre_entity, _, pre_transform, parent), (post_entity, _, post_transform, _)]) =
+        iter.fetch_next()
+    {
+        // 20% chance of creating a synapse
+        if rand::random::<f64>() < 0.9 {
+            continue;
+        }
+        let midpoint = (pre_transform.translation + post_transform.translation) / 2.0;
+        let direction = post_transform.translation - pre_transform.translation;
+        let length = direction.length();
+        let normalized_direction = direction.normalize();
+        let rotation = Quat::from_rotation_arc(Vec3::Y, normalized_direction);
+        let synapse_mesh = meshes.add(Capsule3d::new(0.05, length).mesh());
 
-            let synapse_type = if rand::random::<f64>() > 0.2 {
-                SynapseType::Excitatory
-            } else {
-                SynapseType::Inhibitory
-            };
+        let synapse_type = if rand::random::<f64>() > 0.2 {
+            SynapseType::Excitatory
+        } else {
+            SynapseType::Inhibitory
+        };
 
-            let synapse = commands
-                .spawn((
-                    Synapse {
-                        source: pre_entity,
-                        target: post_entity,
-                        // weight between 0 and 1
-                        weight: rand::random::<f64>(),
-                        delay: 1,
-                        synapse_type: synapse_type,
+        let synapse = commands
+            .spawn((
+                Synapse {
+                    source: pre_entity,
+                    target: post_entity,
+                    // weight between 0 and 1
+                    weight: rand::random::<f64>(),
+                    delay: 1,
+                    synapse_type: synapse_type,
+                },
+                PbrBundle {
+                    mesh: synapse_mesh,
+                    material: match synapse_type {
+                        SynapseType::Excitatory => synapse_material_excitory.clone(),
+                        SynapseType::Inhibitory => synapse_material_inhibitory.clone(),
                     },
-                    PbrBundle {
-                        mesh: synapse_mesh,
-                        material: match synapse_type {
-                            SynapseType::Excitatory => synapse_material_excitory.clone(),
-                            SynapseType::Inhibitory => synapse_material_inhibitory.clone(),
-                        },
-                        transform: Transform {
-                            translation: midpoint,
-                            rotation,
-                            ..Default::default()
-                        },
+                    transform: Transform {
+                        translation: midpoint,
+                        rotation,
                         ..Default::default()
                     },
-                    // Collider::capsule_y(length / 2.0, 0.05),
-                ))
-                .set_parent(parent.get())
-                .id();
+                    ..Default::default()
+                },
+                // Collider::capsule_y(length / 2.0, 0.05),
+            ))
+            .set_parent(parent.get())
+            .id();
 
-            info!(
-                "Synapse created: {:?}, connected {:?} to {:?}",
-                synapse, pre_entity, post_entity
-            );
+        info!(
+            "Synapse created: {:?}, connected {:?} to {:?}",
+            synapse, pre_entity, post_entity
+        );
 
-            // commands.entity(neuron.clone()).add_child(synapse);
+        // commands.entity(neuron.clone()).add_child(synapse);
+    }
+}
+
+fn update_neurons<T: Component + Neuron>(
+    clock: ResMut<Clock>,
+    mut neuron_query: Query<(
+        Entity,
+        &mut T,
+        Option<&mut MembranePlotter>,
+        Option<&mut SpikeRecorder>,
+    )>,
+    mut spike_writer: EventWriter<SpikeEvent>,
+) {
+    for (_entity, mut neuron, mut plotter, mut spike_recorder) in neuron_query.iter_mut() {
+        let fired = neuron.update(SiTime::new::<second>(clock.tau));
+
+        if let Some(plotter) = &mut plotter {
+            plotter.add_point(neuron.get_membrane_potential(), clock.time);
+        }
+
+        if fired {
+            spike_writer.send(SpikeEvent {
+                time: SiTime::new::<second>(clock.time),
+                neuron: _entity,
+            });
+
+            if let Some(spike_recorder) = &mut spike_recorder {
+                spike_recorder.spikes.push(Spike {
+                    time: SiTime::new::<second>(clock.time),
+                    neuron: _entity,
+                });
+            }
         }
     }
 }
@@ -511,31 +553,25 @@ fn mouse_click(
     }
 }
 
-fn update_materials(
+fn update_neuron_materials<T: Component + Neuron>(
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut neuron_query: Query<(
-        Entity,
-        &Neuron,
-        &LeakyNeuron,
-        &Handle<StandardMaterial>,
-        &ColumnLayer,
-    )>,
+    mut neuron_query: Query<(Entity, &T, &Handle<StandardMaterial>, &ColumnLayer)>,
 ) {
-    for (_, neuron, leaky, material_handle, layer) in neuron_query.iter_mut() {
+    for (_, neuron, material_handle, layer) in neuron_query.iter_mut() {
         let material = materials.get_mut(material_handle).unwrap();
-        if neuron.membrane_potential < leaky.resting_potential {
-            material.emissive = layer.get_color_from_potential(
-                leaky.resting_potential.get::<millivolt>() as f32,
-                leaky.resting_potential.get::<millivolt>() as f32,
-                neuron.threshold_potential.get::<millivolt>() as f32,
-            );
-        } else {
-            material.emissive = layer.get_color_from_potential(
-                neuron.membrane_potential.get::<millivolt>() as f32,
-                leaky.resting_potential.get::<millivolt>() as f32,
-                neuron.threshold_potential.get::<millivolt>() as f32,
-            );
-        }
+        // if neuron.membrane_potential < leaky.resting_potential {
+        //     material.emissive = layer.get_color_from_potential(
+        //         leaky.resting_potential.get::<millivolt>() as f32,
+        //         leaky.resting_potential.get::<millivolt>() as f32,
+        //         neuron.threshold_potential.get::<millivolt>() as f32,
+        //     );
+        // } else {
+        //     material.emissive = layer.get_color_from_potential(
+        //         neuron.membrane_potential.get::<millivolt>() as f32,
+        //         leaky.resting_potential.get::<millivolt>() as f32,
+        //         neuron.threshold_potential.get::<millivolt>() as f32,
+        //     );
+        // }
     }
 }
 
