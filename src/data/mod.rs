@@ -2,22 +2,17 @@ use bevy::{
     app::{App, Update},
     prelude::{Component, Plugin, Query, Res},
 };
+use bevy_trait_query::One;
 use egui_plot::PlotPoints;
-use uom::si::{electric_potential::millivolt, f64::Time, time::second};
+use uom::si::{f64::Time, time::second};
 
-use crate::neurons::{leaky::LifNeuron, Clock, IzhikevichNeuron, Neuron};
+use crate::neurons::{Clock, Neuron};
 
 pub struct NeuronDataCollectionPlugin;
 
 impl Plugin for NeuronDataCollectionPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            (
-                update_plotters::<LifNeuron>,
-                update_plotters::<IzhikevichNeuron>,
-            ),
-        );
+        app.add_systems(Update, update_plotters);
     }
 }
 
@@ -68,8 +63,8 @@ impl MembranePlotter {
     }
 }
 
-fn update_plotters<T: Component + Neuron>(
-    mut plotter_query: Query<(&T, &mut MembranePlotter)>,
+fn update_plotters(
+    mut plotter_query: Query<(One<&dyn Neuron>, &mut MembranePlotter)>,
     clock: Res<Clock>,
 ) {
     for (neuron, mut membrane_plotter) in plotter_query.iter_mut() {

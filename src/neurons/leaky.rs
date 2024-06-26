@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use uom::si::{f64::Time as SiTime, time::second};
 
-use super::Neuron;
+use super::{Neuron, NeuronVisualizer};
 
 #[derive(Component, Debug)]
 pub struct LifNeuron {
@@ -21,8 +21,7 @@ impl Neuron for LifNeuron {
             return false;
         }
 
-        let delta_v = (self.resting_potential - self.membrane_potential) * tau.get::<second>()
-            / self.resistance;
+        let delta_v = (self.resting_potential - self.membrane_potential) * tau.get::<second>();
 
         self.membrane_potential += delta_v;
 
@@ -43,4 +42,24 @@ impl Neuron for LifNeuron {
         self.membrane_potential += delta_v;
         self.membrane_potential
     }
+}
+
+impl NeuronVisualizer for LifNeuron {
+    fn activation_percent(&self) -> f64 {
+        if self.membrane_potential < self.resting_potential {
+            return 1.0;
+        }
+
+        refit_to_range(
+            self.membrane_potential as f32,
+            self.resting_potential as f32,
+            self.threshold_potential as f32,
+            0.0,
+            1.0,
+        ) as f64
+    }
+}
+
+fn refit_to_range(n: f32, start1: f32, stop1: f32, start2: f32, stop2: f32) -> f32 {
+    ((n - start1) / (stop1 - start1)) * (stop2 - start2) + start2
 }

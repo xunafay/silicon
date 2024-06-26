@@ -1,13 +1,16 @@
+use std::time::Duration;
+
 use bevy::{
     core::TaskPoolThreadAssignmentPolicy,
     core_pipeline::{
-        bloom::{BloomCompositeMode, BloomSettings},
+        bloom::{BloomCompositeMode, BloomPrefilterSettings, BloomSettings},
         tonemapping::Tonemapping,
     },
     diagnostic::FrameTimeDiagnosticsPlugin,
-    log::LogPlugin,
+    log::{tracing_subscriber::layer, LogPlugin},
     pbr::ClusterConfig,
     prelude::*,
+    render::view::Layer,
     tasks::available_parallelism,
     window::WindowResolution,
 };
@@ -17,28 +20,22 @@ use bevy_rapier3d::{
     pipeline::QueryFilter,
     plugin::{NoUserData, RapierContext, RapierPhysicsPlugin},
 };
+use bevy_trait_query::One;
 use data::{MembranePlotter, NeuronDataCollectionPlugin};
 use neurons::{
-    cortical_column::{ColumnLayer, MiniColumn},
-    leaky::LifNeuron,
-    synapse::{AllowSynapse, Synapse, SynapseType},
-    Clock, IzhikevichNeuron, Neuron, NeuronRuntimePlugin, OscillatingNeuron, Refactory, Spike,
-    SpikeEvent, SpikeRecorder,
+    izhikevich::IzhikevichNeuron, Clock, Neuron, NeuronRuntimePlugin, NeuronVisualizer, SpikeEvent,
 };
-use rand::seq::IteratorRandom;
+use rand::Rng;
+use structure::cortical_column::{ColumnLayer, MiniColumn};
+use synapses::{synapse::SimpleSynapse, AllowSynapses, SynapseType};
 use ui::{state::UiState, SiliconUiPlugin};
-use uom::{
-    si::{
-        electric_potential::millivolt,
-        electrical_resistance::ohm,
-        f64::{ElectricPotential, ElectricalResistance, Time as SiTime},
-        time::second,
-    },
-    ConstZero,
-};
+use uom::si::{f64::Time as SiTime, time::second};
 
 mod data;
+mod learning;
 mod neurons;
+mod structure;
+mod synapses;
 mod ui;
 
 fn main() {
@@ -92,30 +89,18 @@ impl Plugin for SiliconPlugin {
         .insert_resource(Insights {
             selected_entity: None,
         })
+        .insert_resource(Time::<Fixed>::from_duration(Duration::from_millis(5000)))
+        .add_systems(FixedUpdate, insert_current)
+        .add_systems(PostStartup, notify_setup_done)
         .add_systems(
             Update,
-            (
-                update_neurons::<IzhikevichNeuron>,
-                update_neurons::<LifNeuron>,
-            ),
+            (update_neurons, update_neuron_materials, mouse_click),
         )
         .add_systems(
             Startup,
-            (
-                (create_neurons, create_synapses::<IzhikevichNeuron>).chain(),
-                setup_scene,
-            ),
-        )
-        // .add_systems(PostStartup, hide_meshes) // hide meshes if you need some extra performance
-        .add_systems(
-            Update,
-            (
-                update_bloom_settings,
-                update_neuron_materials::<LifNeuron>,
-                update_neuron_materials::<IzhikevichNeuron>,
-                mouse_click,
-            ),
+            ((create_neurons, create_synapses).chain(), setup_scene),
         );
+        // .add_systems(PostStartup, hide_meshes) // hide meshes if you need some extra performance
     }
 }
 
@@ -126,278 +111,43 @@ fn hide_meshes(mut visibilities: Query<&mut Visibility>) {
     }
 }
 
-fn create_neurons(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    let minicolumn = commands
-        .spawn((
-            MiniColumn,
-            Transform::from_xyz(0.0, 0.0, 0.0),
-            GlobalTransform::default(),
-        ))
-        .id();
+fn notify_setup_done() {
+    info!("Setup done!");
+}
 
-    let mesh = meshes.add(Cuboid::new(0.5, 0.5, 0.5).mesh());
-
-    let mut neurons = vec![];
-
-    for x in -1..1 {
-        for y in -1..1 {
-            for z in 0..1 {
-                let leaky_neuron_material = materials.add(StandardMaterial {
-                    emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
-                    ..Default::default()
-                });
-
-                let neuron = commands
-                    .spawn((
-                        LifNeuron {
-                            membrane_potential: -70.0,
-                            reset_potential: -90.0,
-                            threshold_potential: -55.0,
-                            resistance: 1.3,
-                            resting_potential: -70.0,
-                            refactory_period: 0.09,
-                            refactory_counter: 0.0,
-                        },
-                        Refactory {
-                            refractory_period: SiTime::new::<second>(0.09),
-                            refactory_counter: SiTime::ZERO,
-                        },
-                        PbrBundle {
-                            mesh: mesh.clone(),
-                            material: leaky_neuron_material,
-                            visibility: Visibility::Visible,
-                            transform: Transform::from_xyz(x as f32, y as f32, z as f32 + -15.0),
-                            ..Default::default()
-                        },
-                        MembranePlotter::new(),
-                        Collider::cuboid(0.25, 0.25, 0.25),
-                        ColumnLayer::L1,
-                        AllowSynapse,
-                    ))
-                    .set_parent(minicolumn)
-                    .id();
-
-                neurons.push(neuron);
-            }
+fn insert_current(mut neurons_query: Query<(Entity, One<&mut dyn Neuron>, &ColumnLayer)>) {
+    for (entity, mut neuron, layer) in neurons_query.iter_mut() {
+        if layer != &ColumnLayer::L4 {
+            continue;
         }
-    }
 
-    for x in -2..3 {
-        for y in -2..3 {
-            for z in 0..1 {
-                let leaky_neuron_material = materials.add(StandardMaterial {
-                    emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
-                    ..Default::default()
-                });
-
-                let neuron = commands
-                    .spawn((
-                        IzhikevichNeuron {
-                            a: 0.1,
-                            b: 0.26,
-                            c: -60.0,
-                            d: 5.0,
-                            v: -65.0,
-                            u: -14.0,
-                        },
-                        PbrBundle {
-                            mesh: mesh.clone(),
-                            material: leaky_neuron_material,
-                            visibility: Visibility::Visible,
-                            transform: Transform::from_xyz(x as f32, y as f32, z as f32 + -10.0),
-                            ..Default::default()
-                        },
-                        MembranePlotter::new(),
-                        Collider::cuboid(0.25, 0.25, 0.25),
-                        ColumnLayer::L2,
-                        AllowSynapse,
-                    ))
-                    .set_parent(minicolumn)
-                    .id();
-
-                neurons.push(neuron);
-            }
-        }
-    }
-
-    for x in -2..3 {
-        for y in -2..3 {
-            for z in 0..1 {
-                let leaky_neuron_material = materials.add(StandardMaterial {
-                    emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
-                    ..Default::default()
-                });
-
-                let neuron = commands
-                    .spawn((
-                        LifNeuron {
-                            membrane_potential: -70.0,
-                            reset_potential: -90.0,
-                            threshold_potential: -55.0,
-                            resistance: 1.3,
-                            resting_potential: -70.0,
-                            refactory_period: 0.09,
-                            refactory_counter: 0.0,
-                        },
-                        Refactory {
-                            refractory_period: SiTime::new::<second>(0.09),
-                            refactory_counter: SiTime::ZERO,
-                        },
-                        PbrBundle {
-                            mesh: mesh.clone(),
-                            material: leaky_neuron_material,
-                            visibility: Visibility::Visible,
-                            transform: Transform::from_xyz(x as f32, y as f32, z as f32 + -5.0),
-                            ..Default::default()
-                        },
-                        MembranePlotter::new(),
-                        Collider::cuboid(0.25, 0.25, 0.25),
-                        ColumnLayer::L3,
-                        AllowSynapse,
-                    ))
-                    .set_parent(minicolumn)
-                    .id();
-
-                neurons.push(neuron);
-            }
-        }
-    }
-
-    for x in -2..2 {
-        for y in -2..2 {
-            for z in 0..1 {
-                let oscillating_neuron_material = materials.add(StandardMaterial {
-                    emissive: Color::rgb_linear(3000.0, 23000.0, 9000.0),
-                    ..Default::default()
-                });
-
-                let neuron = commands
-                    .spawn((
-                        LifNeuron {
-                            membrane_potential: -70.0,
-                            reset_potential: -90.0,
-                            threshold_potential: -55.0,
-                            resistance: 1.3,
-                            resting_potential: -70.0,
-                            refactory_period: 0.09,
-                            refactory_counter: 0.0,
-                        },
-                        OscillatingNeuron {
-                            // random frequency between 0.05 and 0.3
-                            frequency: 0.01 + (0.2 - 0.01) * rand::random::<f64>(),
-                            amplitude: 1.0,
-                        },
-                        PbrBundle {
-                            mesh: mesh.clone(),
-                            material: oscillating_neuron_material,
-                            transform: Transform::from_xyz(x as f32, y as f32, z as f32),
-                            ..Default::default()
-                        },
-                        MembranePlotter::new(),
-                        Collider::cuboid(0.25, 0.25, 0.25),
-                        ColumnLayer::L4,
-                    ))
-                    .set_parent(minicolumn)
-                    .id();
-
-                neurons.push(neuron);
-            }
-        }
-    }
-
-    for x in -2..2 {
-        for y in -2..2 {
-            for z in 0..1 {
-                let leaky_neuron_material = materials.add(StandardMaterial {
-                    emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
-                    ..Default::default()
-                });
-
-                let neuron = commands
-                    .spawn((
-                        LifNeuron {
-                            membrane_potential: -70.0,
-                            reset_potential: -90.0,
-                            threshold_potential: -55.0,
-                            resistance: 1.3,
-                            resting_potential: -70.0,
-                            refactory_period: 0.09,
-                            refactory_counter: 0.0,
-                        },
-                        Refactory {
-                            refractory_period: SiTime::new::<second>(0.09),
-                            refactory_counter: SiTime::ZERO,
-                        },
-                        PbrBundle {
-                            mesh: mesh.clone(),
-                            material: leaky_neuron_material,
-                            visibility: Visibility::Visible,
-                            transform: Transform::from_xyz(x as f32, y as f32, z as f32 + 5.0),
-                            ..Default::default()
-                        },
-                        MembranePlotter::new(),
-                        Collider::cuboid(0.25, 0.25, 0.25),
-                        ColumnLayer::L5,
-                        AllowSynapse,
-                    ))
-                    .set_parent(minicolumn)
-                    .id();
-
-                neurons.push(neuron);
-            }
-        }
-    }
-
-    for x in -1..2 {
-        for y in -1..2 {
-            for z in 0..1 {
-                let leaky_neuron_material = materials.add(StandardMaterial {
-                    emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
-                    ..Default::default()
-                });
-
-                let neuron = commands
-                    .spawn((
-                        LifNeuron {
-                            membrane_potential: -70.0,
-                            reset_potential: -90.0,
-                            threshold_potential: -55.0,
-                            resistance: 1.3,
-                            resting_potential: -70.0,
-                            refactory_period: 0.09,
-                            refactory_counter: 0.0,
-                        },
-                        PbrBundle {
-                            mesh: mesh.clone(),
-                            material: leaky_neuron_material,
-                            visibility: Visibility::Visible,
-                            transform: Transform::from_xyz(x as f32, y as f32, z as f32 + 10.0),
-                            ..Default::default()
-                        },
-                        MembranePlotter::new(),
-                        Collider::cuboid(0.25, 0.25, 0.25),
-                        ColumnLayer::L6,
-                        AllowSynapse,
-                    ))
-                    .set_parent(minicolumn)
-                    .id();
-
-                neurons.push(neuron);
-            }
+        // only insert current into 50% of L4 neurons
+        if rand::random::<f64>() < 0.5 {
+            trace!("Inserting current into neuron {:?}", entity);
+            neuron.add_membrane_potential(rand::thread_rng().gen_range(0.4..=0.8));
         }
     }
 }
 
-fn create_synapses<T: Component + Neuron>(
+fn create_neurons(
+    commands: Commands,
+    meshes: ResMut<Assets<Mesh>>,
+    materials: ResMut<Assets<StandardMaterial>>,
+) {
+    MiniColumn::create(commands, meshes, materials);
+}
+
+fn create_synapses(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    neuron_query: Query<(Entity, &AllowSynapse, &Transform, &Parent)>,
+    neuron_query: Query<(Entity, &mut dyn Neuron, &Transform)>,
 ) {
+    trace!(
+        "Creating synapses for {} neurons",
+        neuron_query.iter().len()
+    );
+
     let synapse_material_excitory = materials.add(StandardMaterial {
         base_color: Color::rgba(0.4, 0.4, 1.0, 0.5),
         emissive: Color::rgb_linear(0.3, 0.3, 200.0), // Bright green emissive color
@@ -414,19 +164,28 @@ fn create_synapses<T: Component + Neuron>(
 
     let mut iter = neuron_query.iter_combinations();
 
-    while let Some([(pre_entity, _, pre_transform, parent), (post_entity, _, post_transform, _)]) =
+    while let Some([(pre_entity, _, pre_transform), (post_entity, _, post_transform)]) =
         iter.fetch_next()
     {
-        // 20% chance of creating a synapse
-        if rand::random::<f64>() < 0.9 {
+        if rand::random::<f64>() < 0.8 {
             continue;
         }
+
         let midpoint = (pre_transform.translation + post_transform.translation) / 2.0;
+        let synapse_pos_post = midpoint + (post_transform.translation - midpoint) / 2.0;
+        let synapse_pos_pre = midpoint + (pre_transform.translation - midpoint) / 2.0;
         let direction = post_transform.translation - pre_transform.translation;
         let length = direction.length();
         let normalized_direction = direction.normalize();
         let rotation = Quat::from_rotation_arc(Vec3::Y, normalized_direction);
-        let synapse_mesh = meshes.add(Capsule3d::new(0.05, length).mesh());
+        let synapse_stalk_mesh = meshes.add(Capsule3d::new(0.05, length).mesh());
+        let synapse_mesh = meshes.add(
+            Cylinder {
+                half_height: 0.2,
+                radius: 0.2,
+            }
+            .mesh(),
+        );
 
         let synapse_type = if rand::random::<f64>() > 0.2 {
             SynapseType::Excitatory
@@ -434,18 +193,47 @@ fn create_synapses<T: Component + Neuron>(
             SynapseType::Inhibitory
         };
 
+        let synapse_direction = rand::random::<f64>() > 0.5;
+
         let synapse = commands
             .spawn((
-                Synapse {
-                    source: pre_entity,
-                    target: post_entity,
+                SimpleSynapse {
+                    source: match synapse_direction {
+                        true => pre_entity,
+                        false => post_entity,
+                    },
+                    target: match synapse_direction {
+                        true => post_entity,
+                        false => pre_entity,
+                    },
                     // weight between 0 and 1
-                    weight: rand::random::<f64>(),
+                    weight: rand::thread_rng().gen_range(0.1..=0.3),
                     delay: 1,
-                    synapse_type: synapse_type,
+                    synapse_type,
                 },
-                PbrBundle {
+                GlobalTransform::default(),
+                Transform::from_xyz(0.0, 0.0, 0.0),
+                // Collider::capsule_y(length / 2.0, 0.05),
+            ))
+            .with_children(|parent| {
+                parent.spawn(PbrBundle {
                     mesh: synapse_mesh,
+                    material: match synapse_type {
+                        SynapseType::Excitatory => synapse_material_excitory.clone(),
+                        SynapseType::Inhibitory => synapse_material_inhibitory.clone(),
+                    },
+                    transform: Transform {
+                        translation: match synapse_direction {
+                            true => synapse_pos_pre,
+                            false => synapse_pos_post,
+                        },
+                        rotation,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+                parent.spawn(PbrBundle {
+                    mesh: synapse_stalk_mesh,
                     material: match synapse_type {
                         SynapseType::Excitatory => synapse_material_excitory.clone(),
                         SynapseType::Inhibitory => synapse_material_inhibitory.clone(),
@@ -456,50 +244,37 @@ fn create_synapses<T: Component + Neuron>(
                         ..Default::default()
                     },
                     ..Default::default()
-                },
-                // Collider::capsule_y(length / 2.0, 0.05),
-            ))
-            .set_parent(parent.get())
+                });
+            })
+            // .set_parent(parent.get())
             .id();
 
         info!(
             "Synapse created: {:?}, connected {:?} to {:?}",
             synapse, pre_entity, post_entity
         );
-
-        // commands.entity(neuron.clone()).add_child(synapse);
     }
 }
 
-fn update_neurons<T: Component + Neuron>(
+fn update_neurons(
     clock: ResMut<Clock>,
-    mut neuron_query: Query<(
-        Entity,
-        &mut T,
-        Option<&mut MembranePlotter>,
-        Option<&mut SpikeRecorder>,
-    )>,
+    mut neuron_query: Query<(Entity, One<&mut dyn Neuron>, Option<&mut MembranePlotter>)>,
     mut spike_writer: EventWriter<SpikeEvent>,
 ) {
-    for (_entity, mut neuron, mut plotter, mut spike_recorder) in neuron_query.iter_mut() {
+    for (entity, mut neuron, mut plotter) in neuron_query.iter_mut() {
         let fired = neuron.update(SiTime::new::<second>(clock.tau));
-
         if let Some(plotter) = &mut plotter {
             plotter.add_point(neuron.get_membrane_potential(), clock.time);
+            if fired {
+                plotter.add_spike(clock.time);
+            }
         }
 
         if fired {
             spike_writer.send(SpikeEvent {
                 time: SiTime::new::<second>(clock.time),
-                neuron: _entity,
+                neuron: entity,
             });
-
-            if let Some(spike_recorder) = &mut spike_recorder {
-                spike_recorder.spikes.push(Spike {
-                    time: SiTime::new::<second>(clock.time),
-                    neuron: _entity,
-                });
-            }
         }
     }
 }
@@ -553,25 +328,20 @@ fn mouse_click(
     }
 }
 
-fn update_neuron_materials<T: Component + Neuron>(
+fn update_neuron_materials(
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut neuron_query: Query<(Entity, &T, &Handle<StandardMaterial>, &ColumnLayer)>,
+    mut neuron_query: Query<(
+        Entity,
+        One<&mut dyn NeuronVisualizer>,
+        &Handle<StandardMaterial>,
+        &ColumnLayer,
+    )>,
 ) {
-    for (_, neuron, material_handle, layer) in neuron_query.iter_mut() {
+    for (_entity, neuron, material_handle, layer) in neuron_query.iter_mut() {
         let material = materials.get_mut(material_handle).unwrap();
-        // if neuron.membrane_potential < leaky.resting_potential {
-        //     material.emissive = layer.get_color_from_potential(
-        //         leaky.resting_potential.get::<millivolt>() as f32,
-        //         leaky.resting_potential.get::<millivolt>() as f32,
-        //         neuron.threshold_potential.get::<millivolt>() as f32,
-        //     );
-        // } else {
-        //     material.emissive = layer.get_color_from_potential(
-        //         neuron.membrane_potential.get::<millivolt>() as f32,
-        //         leaky.resting_potential.get::<millivolt>() as f32,
-        //         neuron.threshold_potential.get::<millivolt>() as f32,
-        //     );
-        // }
+
+        material.emissive = layer.get_color_from_activation(neuron.activation_percent());
+        material.base_color = layer.get_color();
     }
 }
 
@@ -587,146 +357,15 @@ fn setup_scene(mut commands: Commands) {
             ..default()
         },
         // Enable bloom for the camera
-        BloomSettings::NATURAL,
+        BloomSettings {
+            composite_mode: BloomCompositeMode::Additive,
+            high_pass_frequency: 1.0,
+            intensity: 0.1,
+            low_frequency_boost: 0.8,
+            low_frequency_boost_curvature: 1.0,
+            prefilter_settings: BloomPrefilterSettings::default(),
+        },
         PanOrbitCamera::default(),
         ClusterConfig::Single, // Single cluster for the whole scene as it's small
     ));
-
-    // bloom settings text
-    commands.spawn(
-        TextBundle::from_section(
-            "",
-            TextStyle {
-                font_size: 20.0,
-                color: Color::WHITE,
-                ..default()
-            },
-        )
-        .with_style(Style {
-            position_type: PositionType::Absolute,
-            bottom: Val::Px(12.0),
-            left: Val::Px(12.0),
-            ..default()
-        }),
-    );
-}
-
-fn update_bloom_settings(
-    mut camera: Query<(Entity, Option<&mut BloomSettings>), With<Camera>>,
-    mut text: Query<&mut Text>,
-    mut commands: Commands,
-    keycode: Res<ButtonInput<KeyCode>>,
-    time: Res<Time>,
-) {
-    let bloom_settings = camera.single_mut();
-    let mut text = text.single_mut();
-    let text = &mut text.sections[0].value;
-
-    match bloom_settings {
-        (entity, Some(mut bloom_settings)) => {
-            *text = "BloomSettings (Toggle: Space)\n".to_string();
-            text.push_str(&format!("(Q/A) Intensity: {}\n", bloom_settings.intensity));
-            text.push_str(&format!(
-                "(W/S) Low-frequency boost: {}\n",
-                bloom_settings.low_frequency_boost
-            ));
-            text.push_str(&format!(
-                "(E/D) Low-frequency boost curvature: {}\n",
-                bloom_settings.low_frequency_boost_curvature
-            ));
-            text.push_str(&format!(
-                "(R/F) High-pass frequency: {}\n",
-                bloom_settings.high_pass_frequency
-            ));
-            text.push_str(&format!(
-                "(T/G) Mode: {}\n",
-                match bloom_settings.composite_mode {
-                    BloomCompositeMode::EnergyConserving => "Energy-conserving",
-                    BloomCompositeMode::Additive => "Additive",
-                }
-            ));
-            text.push_str(&format!(
-                "(Y/H) Threshold: {}\n",
-                bloom_settings.prefilter_settings.threshold
-            ));
-            text.push_str(&format!(
-                "(U/J) Threshold softness: {}\n",
-                bloom_settings.prefilter_settings.threshold_softness
-            ));
-
-            if keycode.just_pressed(KeyCode::Space) {
-                commands.entity(entity).remove::<BloomSettings>();
-            }
-
-            let dt = time.delta_seconds();
-
-            if keycode.pressed(KeyCode::KeyA) {
-                bloom_settings.intensity -= dt / 10.0;
-            }
-            if keycode.pressed(KeyCode::KeyQ) {
-                bloom_settings.intensity += dt / 10.0;
-            }
-            bloom_settings.intensity = bloom_settings.intensity.clamp(0.0, 1.0);
-
-            if keycode.pressed(KeyCode::KeyS) {
-                bloom_settings.low_frequency_boost -= dt / 10.0;
-            }
-            if keycode.pressed(KeyCode::KeyW) {
-                bloom_settings.low_frequency_boost += dt / 10.0;
-            }
-            bloom_settings.low_frequency_boost = bloom_settings.low_frequency_boost.clamp(0.0, 1.0);
-
-            if keycode.pressed(KeyCode::KeyD) {
-                bloom_settings.low_frequency_boost_curvature -= dt / 10.0;
-            }
-            if keycode.pressed(KeyCode::KeyE) {
-                bloom_settings.low_frequency_boost_curvature += dt / 10.0;
-            }
-            bloom_settings.low_frequency_boost_curvature =
-                bloom_settings.low_frequency_boost_curvature.clamp(0.0, 1.0);
-
-            if keycode.pressed(KeyCode::KeyF) {
-                bloom_settings.high_pass_frequency -= dt / 10.0;
-            }
-            if keycode.pressed(KeyCode::KeyR) {
-                bloom_settings.high_pass_frequency += dt / 10.0;
-            }
-            bloom_settings.high_pass_frequency = bloom_settings.high_pass_frequency.clamp(0.0, 1.0);
-
-            if keycode.pressed(KeyCode::KeyG) {
-                bloom_settings.composite_mode = BloomCompositeMode::Additive;
-            }
-            if keycode.pressed(KeyCode::KeyT) {
-                bloom_settings.composite_mode = BloomCompositeMode::EnergyConserving;
-            }
-
-            if keycode.pressed(KeyCode::KeyH) {
-                bloom_settings.prefilter_settings.threshold -= dt;
-            }
-            if keycode.pressed(KeyCode::KeyY) {
-                bloom_settings.prefilter_settings.threshold += dt;
-            }
-            bloom_settings.prefilter_settings.threshold =
-                bloom_settings.prefilter_settings.threshold.max(0.0);
-
-            if keycode.pressed(KeyCode::KeyJ) {
-                bloom_settings.prefilter_settings.threshold_softness -= dt / 10.0;
-            }
-            if keycode.pressed(KeyCode::KeyU) {
-                bloom_settings.prefilter_settings.threshold_softness += dt / 10.0;
-            }
-            bloom_settings.prefilter_settings.threshold_softness = bloom_settings
-                .prefilter_settings
-                .threshold_softness
-                .clamp(0.0, 1.0);
-        }
-
-        (entity, None) => {
-            *text = "Bloom: Off (Toggle: Space)".to_string();
-
-            if keycode.just_pressed(KeyCode::Space) {
-                commands.entity(entity).insert(BloomSettings::NATURAL);
-            }
-        }
-    }
 }

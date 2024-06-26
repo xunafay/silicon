@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 bevy = { version = "0.13.2", features = ["dynamic_linking"] }
 bevy-inspector-egui = "0.24.0"
+bevy-trait-query = "0.5.1"
 bevy_egui = "0.27.1"
 bevy_math = "0.13.2"
 bevy_panorbit_camera = "0.18.2"
