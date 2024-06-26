@@ -1,8 +1,9 @@
+use crate::data::MembranePlotter;
 use bevy::{
     asset::Assets,
     hierarchy::BuildChildren,
     pbr::{PbrBundle, StandardMaterial},
-    prelude::{Bundle, Commands, Component, Entity, ResMut},
+    prelude::{Bundle, Commands, Component, ResMut},
     render::{
         color::Color,
         mesh::{Mesh, Meshable},
@@ -12,13 +13,8 @@ use bevy::{
 };
 use bevy_math::primitives::Cuboid;
 use bevy_rapier3d::geometry::Collider;
-use rand::Rng;
-
-use crate::{
-    data::MembranePlotter,
-    neurons::{izhikevich::IzhikevichNeuron, leaky::LifNeuron},
-    synapses::AllowSynapses,
-};
+use neurons::izhikevich::IzhikevichNeuron;
+use synapses::AllowSynapses;
 
 #[derive(Component, Debug)]
 pub struct MacroColumn;

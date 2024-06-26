@@ -4,9 +4,8 @@ use bevy::{
 };
 use bevy_trait_query::One;
 use egui_plot::PlotPoints;
-use uom::si::{f64::Time, time::second};
-
-use crate::neurons::{Clock, Neuron};
+use neurons::Neuron;
+use simulator::time::Clock;
 
 pub struct NeuronDataCollectionPlugin;
 
@@ -44,20 +43,20 @@ impl MembranePlotter {
         self.spikes.push(time);
     }
 
-    pub fn plot_points(&self, time_span: Time, current_time: Time) -> PlotPoints {
+    pub fn plot_points(&self, time_span: f64, current_time: f64) -> PlotPoints {
         let points: Vec<[f64; 2]> = self
             .points
             .iter()
-            .filter(|point| point.time >= current_time.get::<second>() - time_span.get::<second>())
+            .filter(|point| point.time >= current_time - time_span)
             .map(|point| [point.time, point.potential])
             .collect();
         PlotPoints::new(points)
     }
 
-    pub fn spike_lines(&self, time_span: Time, current_time: Time) -> Vec<f64> {
+    pub fn spike_lines(&self, time_span: f64, current_time: f64) -> Vec<f64> {
         self.spikes
             .iter()
-            .filter(|time| **time >= current_time.get::<second>() - time_span.get::<second>())
+            .filter(|time| **time >= current_time - time_span)
             .copied()
             .collect()
     }
@@ -68,9 +67,6 @@ fn update_plotters(
     clock: Res<Clock>,
 ) {
     for (neuron, mut membrane_plotter) in plotter_query.iter_mut() {
-        membrane_plotter.add_point(
-            neuron.get_membrane_potential(),
-            Time::new::<second>(clock.time).get::<second>(),
-        );
+        membrane_plotter.add_point(neuron.get_membrane_potential(), clock.time);
     }
 }

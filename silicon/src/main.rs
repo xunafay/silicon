@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use ::neurons::{Neuron, NeuronPlugin};
 use bevy::{
     core::TaskPoolThreadAssignmentPolicy,
     core_pipeline::{
@@ -7,35 +8,29 @@ use bevy::{
         tonemapping::Tonemapping,
     },
     diagnostic::FrameTimeDiagnosticsPlugin,
-    log::{tracing_subscriber::layer, LogPlugin},
+    log::LogPlugin,
     pbr::ClusterConfig,
     prelude::*,
-    render::view::Layer,
     tasks::available_parallelism,
     window::WindowResolution,
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::{
-    geometry::Collider,
     pipeline::QueryFilter,
     plugin::{NoUserData, RapierContext, RapierPhysicsPlugin},
+    rapier::crossbeam::epoch::Pointable,
 };
 use bevy_trait_query::One;
 use data::{MembranePlotter, NeuronDataCollectionPlugin};
-use neurons::{
-    izhikevich::IzhikevichNeuron, Clock, Neuron, NeuronRuntimePlugin, NeuronVisualizer, SpikeEvent,
-};
+use neurons::NeuronVisualizer;
 use rand::Rng;
+use simulator::{time::Clock, SimulationPlugin, SpikeEvent};
 use structure::cortical_column::{ColumnLayer, MiniColumn};
-use synapses::{synapse::SimpleSynapse, AllowSynapses, SynapseType};
+use synapses::{simple::SimpleSynapse, SynapsePlugin, SynapseType};
 use ui::{state::UiState, SiliconUiPlugin};
-use uom::si::{f64::Time as SiTime, time::second};
 
 mod data;
-mod learning;
-mod neurons;
 mod structure;
-mod synapses;
 mod ui;
 
 fn main() {
@@ -82,8 +77,10 @@ impl Plugin for SiliconPlugin {
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(NeuronDataCollectionPlugin)
         .add_plugins(SiliconUiPlugin)
-        .add_plugins(NeuronRuntimePlugin)
+        .add_plugins(NeuronPlugin)
+        .add_plugins(SimulationPlugin)
         .add_plugins(FrameTimeDiagnosticsPlugin)
+        .add_plugins(SynapsePlugin)
         // .add_plugins(RapierDebugRenderPlugin::default())
         .insert_resource(Msaa::Sample8)
         .insert_resource(Insights {
@@ -92,6 +89,7 @@ impl Plugin for SiliconPlugin {
         .insert_resource(Time::<Fixed>::from_duration(Duration::from_millis(5000)))
         .add_systems(FixedUpdate, insert_current)
         .add_systems(PostStartup, notify_setup_done)
+        .add_systems(Update, show_select_neuron_synapses)
         .add_systems(
             Update,
             (update_neurons, update_neuron_materials, mouse_click),
@@ -108,6 +106,47 @@ impl Plugin for SiliconPlugin {
 fn hide_meshes(mut visibilities: Query<&mut Visibility>) {
     for mut visibility in visibilities.iter_mut() {
         *visibility = Visibility::Hidden;
+    }
+}
+
+// Inherited visibilty didn't work for me, so I had to query the children and set their visibility too
+fn show_select_neuron_synapses(
+    insights: Res<Insights>,
+    mut synapse_query: Query<(&SimpleSynapse, &mut Visibility, &Children)>,
+    mut child_query: Query<&mut Visibility, Without<SimpleSynapse>>,
+) {
+    if let Some(selected_entity) = insights.selected_entity {
+        for (synapse, mut visibility, children) in synapse_query.iter_mut() {
+            let is_visible = synapse.source == selected_entity || synapse.target == selected_entity;
+
+            *visibility = if is_visible {
+                Visibility::Visible
+            } else {
+                Visibility::Hidden
+            };
+
+            // Update the visibility of its children
+            for &child in children.iter() {
+                if let Ok(mut child_visibility) = child_query.get_mut(child) {
+                    *child_visibility = if is_visible {
+                        Visibility::Visible
+                    } else {
+                        Visibility::Hidden
+                    };
+                }
+            }
+        }
+    } else {
+        for (_, mut visibility, children) in synapse_query.iter_mut() {
+            *visibility = Visibility::Visible;
+
+            // Update the visibility of its children
+            for &child in children.iter() {
+                if let Ok(mut child_visibility) = child_query.get_mut(child) {
+                    *child_visibility = Visibility::Visible;
+                }
+            }
+        }
     }
 }
 
@@ -149,14 +188,14 @@ fn create_synapses(
     );
 
     let synapse_material_excitory = materials.add(StandardMaterial {
-        base_color: Color::rgba(0.4, 0.4, 1.0, 0.5),
+        base_color: Color::rgba(0.4, 0.4, 1.0, 0.8),
         emissive: Color::rgb_linear(0.3, 0.3, 200.0), // Bright green emissive color
         alpha_mode: AlphaMode::Blend,                 // Enable blending for translucency
         ..Default::default()
     });
 
     let synapse_material_inhibitory = materials.add(StandardMaterial {
-        base_color: Color::rgba(1.0, 0.4, 0.4, 0.5),
+        base_color: Color::rgba(1.0, 0.4, 0.4, 0.8),
         emissive: Color::rgb_linear(200.0, 0.3, 0.3), // Bright red emissive color
         alpha_mode: AlphaMode::Blend,                 // Enable blending for translucency
         ..Default::default()
@@ -211,6 +250,7 @@ fn create_synapses(
                     delay: 1,
                     synapse_type,
                 },
+                Visibility::Visible,
                 GlobalTransform::default(),
                 Transform::from_xyz(0.0, 0.0, 0.0),
                 // Collider::capsule_y(length / 2.0, 0.05),
@@ -230,6 +270,7 @@ fn create_synapses(
                         rotation,
                         ..Default::default()
                     },
+                    visibility: Visibility::Inherited,
                     ..Default::default()
                 });
                 parent.spawn(PbrBundle {
@@ -243,6 +284,7 @@ fn create_synapses(
                         rotation,
                         ..Default::default()
                     },
+                    visibility: Visibility::Inherited,
                     ..Default::default()
                 });
             })
@@ -262,7 +304,7 @@ fn update_neurons(
     mut spike_writer: EventWriter<SpikeEvent>,
 ) {
     for (entity, mut neuron, mut plotter) in neuron_query.iter_mut() {
-        let fired = neuron.update(SiTime::new::<second>(clock.tau));
+        let fired = neuron.update(clock.tau);
         if let Some(plotter) = &mut plotter {
             plotter.add_point(neuron.get_membrane_potential(), clock.time);
             if fired {
@@ -272,7 +314,7 @@ fn update_neurons(
 
         if fired {
             spike_writer.send(SpikeEvent {
-                time: SiTime::new::<second>(clock.time),
+                time: clock.time,
                 neuron: entity,
             });
         }
@@ -320,7 +362,9 @@ fn mouse_click(
                         QueryFilter::default(),
                     ) {
                         insights.selected_entity = Some(entity);
-                        println!("Clicked on entity: {:?}", entity);
+                        trace!("Clicked on entity: {:?}", entity);
+                    } else {
+                        insights.selected_entity = None;
                     }
                 }
             }

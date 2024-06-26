@@ -17,10 +17,10 @@ use bevy_inspector_egui::bevy_inspector::{
 use bevy_math::Mat4;
 use egui_dock::{DockArea, DockState, NodeIndex, Style};
 use egui_plot::{Legend, Line, Plot, VLine};
+use simulator::time::Clock;
 use transform_gizmo_egui::{Color32, GizmoMode};
-use uom::si::{f64::Time, time::second};
 
-use crate::{data::MembranePlotter, neurons::Clock, Insights};
+use crate::{data::MembranePlotter, Insights};
 
 use super::SimulationUiState;
 
@@ -217,19 +217,15 @@ fn neuron_inspection(ui: &mut egui::Ui, world: &mut World) {
 
     if let Some((entity, plotter)) = selected_plotter {
         plot.show(ui, |plot_ui| {
-            let spikes =
-                plotter.spike_lines(Time::new::<second>(100.0), Time::new::<second>(clock.time));
+            let spikes = plotter.spike_lines(100.0, clock.time);
             for spike in spikes {
                 plot_ui.vline(VLine::new(spike).color(Color32::RED));
             }
 
             plot_ui.line(
-                Line::new(
-                    plotter
-                        .plot_points(Time::new::<second>(100.0), Time::new::<second>(clock.time)),
-                )
-                .name(format!("{:?}", entity))
-                .color(Color32::BLUE),
+                Line::new(plotter.plot_points(100.0, clock.time))
+                    .name(format!("{:?}", entity))
+                    .color(Color32::BLUE),
             );
         });
     }
