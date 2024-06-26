@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use uom::si::{f64::Time as SiTime, time::second};
 
 use super::{Neuron, NeuronVisualizer};
 
@@ -15,13 +14,13 @@ pub struct LifNeuron {
 }
 
 impl Neuron for LifNeuron {
-    fn update(&mut self, tau: SiTime) -> bool {
+    fn update(&mut self, tau: f64) -> bool {
         if self.refactory_counter > 0.0 {
-            self.refactory_counter -= tau.get::<second>();
+            self.refactory_counter -= tau;
             return false;
         }
 
-        let delta_v = (self.resting_potential - self.membrane_potential) * tau.get::<second>();
+        let delta_v = (self.resting_potential - self.membrane_potential) * tau;
 
         self.membrane_potential += delta_v;
 

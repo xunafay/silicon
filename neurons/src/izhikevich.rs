@@ -1,5 +1,4 @@
 use bevy::prelude::Component;
-use uom::si::{f64::Time, time::second};
 
 use super::{Neuron, NeuronVisualizer};
 
@@ -15,11 +14,9 @@ pub struct IzhikevichNeuron {
 }
 
 impl Neuron for IzhikevichNeuron {
-    fn update(&mut self, tau: Time) -> bool {
-        let v = self.v
-            + tau.get::<second>() * (0.04 * self.v * self.v + 5.0 * self.v + 140.0 - self.u)
-            + 0.0;
-        let u = self.u + tau.get::<second>() * self.a * (self.b * self.v - self.u);
+    fn update(&mut self, tau: f64) -> bool {
+        let v = self.v + tau * (0.04 * self.v * self.v + 5.0 * self.v + 140.0 - self.u) + 0.0;
+        let u = self.u + tau * self.a * (self.b * self.v - self.u);
         self.v = v;
         self.u = u;
         if self.v >= 30.0 {
