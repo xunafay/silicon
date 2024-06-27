@@ -27,5 +27,6 @@ pub trait SpikeRecorder {
 pub struct Clock {
     pub time: f64,
     pub time_to_simulate: f64,
+    pub run_indefinitely: bool,
     pub tau: f64,
 }

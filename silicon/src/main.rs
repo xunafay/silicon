@@ -22,7 +22,7 @@ use bevy_rapier3d::{
 use bevy_trait_query::One;
 use neurons::NeuronPlugin;
 use rand::Rng;
-use silicon_core::{Neuron, NeuronVisualizer};
+use silicon_core::{Clock, Neuron, NeuronVisualizer};
 use simulator::SimulationPlugin;
 use structure::cortical_column::{ColumnLayer, MiniColumn};
 use synapses::{
@@ -156,7 +156,14 @@ fn notify_setup_done() {
     info!("Setup done!");
 }
 
-fn insert_current(mut neurons_query: Query<(Entity, One<&mut dyn Neuron>, &ColumnLayer)>) {
+fn insert_current(
+    mut neurons_query: Query<(Entity, One<&mut dyn Neuron>, &ColumnLayer)>,
+    clock: Res<Clock>,
+) {
+    if clock.time_to_simulate <= 0.0 {
+        return;
+    }
+
     for (entity, mut neuron, layer) in neurons_query.iter_mut() {
         if layer != &ColumnLayer::L4 {
             continue;

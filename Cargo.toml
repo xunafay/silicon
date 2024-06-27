@@ -1,6 +1,15 @@
 [workspace]
-members = ["analytics", "neurons", "silicon", "silicon-core", "simulator", "synapses", "ui"]
+members = [
+    "analytics",
+    "neurons",
+    "silicon",
+    "silicon-core",
+    "simulator",
+    "synapses",
+    "ui",
+]
 resolver = "2"
+default-members = ["silicon"]
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

@@ -37,6 +37,7 @@ impl Plugin for SimulationPlugin {
             time: 0.0,
             tau: 0.025,
             time_to_simulate: 0.0,
+            run_indefinitely: false,
         })
         .insert_resource(StdpSettings {
             look_back: 1.0,
@@ -124,7 +125,6 @@ pub fn update_stdp_synapses(
     }
 
     stdp_settings.next_update = stdp_settings.update_interval;
-    debug!("Updating STDP synapses");
 
     for (entity, mut synapse) in synapse_query.iter_mut() {
         let pre_spikes: Vec<f64> = {
@@ -276,6 +276,10 @@ fn update_neurons(
     )>,
     mut spike_writer: EventWriter<SpikeEvent>,
 ) {
+    if clock.time_to_simulate <= 0.0 {
+        return;
+    }
+
     for (entity, mut neuron, mut plotter, mut spike_recorder) in neuron_query.iter_mut() {
         let fired = neuron.update(clock.tau);
         if let Some(plotter) = &mut plotter {

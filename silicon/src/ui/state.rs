@@ -4,7 +4,7 @@ use analytics::MembranePlotter;
 use bevy::{
     asset::{ReflectAsset, UntypedAssetId},
     log::info,
-    prelude::{AppTypeRegistry, Entity, ReflectResource, Resource, With, World},
+    prelude::{AppTypeRegistry, Entity, Mut, ReflectResource, Resource, With, World},
     reflect::TypeRegistry,
     render::camera::{Camera, CameraProjection, Projection},
     transform::components::GlobalTransform,
@@ -175,27 +175,36 @@ impl egui_dock::TabViewer for TabViewer<'_> {
 }
 
 fn simulation_settings(ui: &mut egui::Ui, world: &mut World) {
-    {
-        let mut state = world.get_resource_mut::<SimulationUiState>().unwrap();
-        ui.add(
-            egui::Slider::new(&mut state.simulation_time_slider, 0.0..=100.0)
-                .clamp_to_range(false)
-                .text("Time to simulate in ms"),
-        );
-        let button = ui
-            .button("Run")
-            .on_hover_text("Run the simulation for the specified time");
-        if button.clicked() {
-            info!("Running simulation for {} ms", state.simulation_time_slider);
-        }
-    }
-    let mut clock = world.get_resource_mut::<Clock>().unwrap();
+    world.resource_scope(|world, mut clock: Mut<Clock>| {
+        ui.label(format!("Simulated time: {:.2}ms", clock.time));
 
-    ui.add(
-        egui::Slider::new(&mut clock.tau, 0.001..=0.1)
-            .clamp_to_range(false)
-            .text("Time constant in ms"),
-    );
+        world.resource_scope(|_, mut state: Mut<SimulationUiState>| {
+            ui.add(
+                egui::Slider::new(&mut state.simulation_time_slider, 0.0..=100.0)
+                    .clamp_to_range(false)
+                    .text("Time to simulate in ms"),
+            );
+            ui.add(
+                egui::Slider::new(&mut clock.tau, 0.001..=0.1)
+                    .clamp_to_range(false)
+                    .text("Time constant in ms"),
+            );
+
+            ui.add(egui::Checkbox::new(
+                &mut clock.run_indefinitely,
+                "Run indefinitely",
+            ))
+            .on_hover_text("Run the simulation indefinitely");
+
+            let button = ui
+                .button("Run")
+                .on_hover_text("Run the simulation for the specified time");
+            if button.clicked() {
+                clock.time_to_simulate = state.simulation_time_slider;
+                info!("Running simulation for {} ms", state.simulation_time_slider);
+            }
+        })
+    });
 }
 
 fn neuron_inspection(ui: &mut egui::Ui, world: &mut World) {
