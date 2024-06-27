@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 bevy = { version = "0.13.2", default-features = false }
 bevy-trait-query = "0.5.1"
+silicon-core = { path = "../silicon-core" }

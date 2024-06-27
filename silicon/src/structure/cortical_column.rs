@@ -1,4 +1,4 @@
-use crate::data::MembranePlotter;
+use analytics::MembranePlotter;
 use bevy::{
     asset::Assets,
     hierarchy::BuildChildren,
@@ -14,6 +14,8 @@ use bevy::{
 use bevy_math::primitives::Cuboid;
 use bevy_rapier3d::geometry::Collider;
 use neurons::izhikevich::IzhikevichNeuron;
+use silicon_core::SpikeRecorder;
+use simulator::SimpleSpikeRecorder;
 use synapses::AllowSynapses;
 
 #[derive(Component, Debug)]
@@ -166,6 +168,7 @@ impl MiniColumn {
                             Collider::cuboid(0.25, 0.25, 0.25),
                             ColumnLayer::L1,
                             AllowSynapses,
+                            SimpleSpikeRecorder::default(),
                         ))
                         .set_parent(minicolumn)
                         .id();
@@ -208,6 +211,7 @@ impl MiniColumn {
                             MembranePlotter::new(),
                             Collider::cuboid(0.25, 0.25, 0.25),
                             ColumnLayer::L2,
+                            SimpleSpikeRecorder::default(),
                             AllowSynapses,
                         ))
                         .set_parent(minicolumn)
@@ -246,6 +250,7 @@ impl MiniColumn {
                             },
                             MembranePlotter::new(),
                             Collider::cuboid(0.25, 0.25, 0.25),
+                            SimpleSpikeRecorder::default(),
                             ColumnLayer::L3,
                             AllowSynapses,
                         ))
@@ -284,6 +289,7 @@ impl MiniColumn {
                             },
                             MembranePlotter::new(),
                             Collider::cuboid(0.25, 0.25, 0.25),
+                            SimpleSpikeRecorder::default(),
                             ColumnLayer::L4,
                             AllowSynapses,
                         ))
@@ -324,6 +330,7 @@ impl MiniColumn {
                             MembranePlotter::new(),
                             Collider::cuboid(0.25, 0.25, 0.25),
                             ColumnLayer::L5,
+                            SimpleSpikeRecorder::default(),
                             AllowSynapses,
                         ))
                         .set_parent(minicolumn)
@@ -363,6 +370,7 @@ impl MiniColumn {
                             MembranePlotter::new(),
                             Collider::cuboid(0.25, 0.25, 0.25),
                             ColumnLayer::L6,
+                            SimpleSpikeRecorder::default(),
                             AllowSynapses,
                         ))
                         .set_parent(minicolumn)

@@ -1,5 +1,5 @@
 [workspace]
-members = ["analytics", "neurons", "silicon", "simulator", "synapses", "ui"]
+members = ["analytics", "neurons", "silicon", "silicon-core", "simulator", "synapses", "ui"]
 resolver = "2"
 
 # Enable a small amount of optimization in debug mode

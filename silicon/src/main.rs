@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use ::neurons::{Neuron, NeuronPlugin};
+use analytics::SiliconAnalyticsPlugin;
 use bevy::{
     core::TaskPoolThreadAssignmentPolicy,
     core_pipeline::{
@@ -18,18 +18,20 @@ use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::{
     pipeline::QueryFilter,
     plugin::{NoUserData, RapierContext, RapierPhysicsPlugin},
-    rapier::crossbeam::epoch::Pointable,
 };
 use bevy_trait_query::One;
-use data::{MembranePlotter, NeuronDataCollectionPlugin};
-use neurons::NeuronVisualizer;
+use neurons::NeuronPlugin;
 use rand::Rng;
-use simulator::{time::Clock, SimulationPlugin, SpikeEvent};
+use silicon_core::{Neuron, NeuronVisualizer};
+use simulator::SimulationPlugin;
 use structure::cortical_column::{ColumnLayer, MiniColumn};
-use synapses::{simple::SimpleSynapse, SynapsePlugin, SynapseType};
+use synapses::{
+    simple::SimpleSynapse,
+    stdp::{StdpParams, StdpSynapse},
+    Synapse, SynapsePlugin, SynapseType,
+};
 use ui::{state::UiState, SiliconUiPlugin};
 
-mod data;
 mod structure;
 mod ui;
 
@@ -50,7 +52,7 @@ impl Plugin for SiliconPlugin {
             DefaultPlugins
                 .set(LogPlugin {
                     level: bevy::log::Level::TRACE,
-                    filter: "info,silicon=trace".into(),
+                    filter: "info,silicon=trace,simulator=trace".into(),
                     ..Default::default()
                 })
                 .set(WindowPlugin {
@@ -75,12 +77,14 @@ impl Plugin for SiliconPlugin {
         )
         .add_plugins(PanOrbitCameraPlugin)
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
-        .add_plugins(NeuronDataCollectionPlugin)
         .add_plugins(SiliconUiPlugin)
-        .add_plugins(NeuronPlugin)
-        .add_plugins(SimulationPlugin)
+        .add_plugins((
+            SimulationPlugin,
+            NeuronPlugin,
+            SynapsePlugin,
+            SiliconAnalyticsPlugin,
+        ))
         .add_plugins(FrameTimeDiagnosticsPlugin)
-        .add_plugins(SynapsePlugin)
         // .add_plugins(RapierDebugRenderPlugin::default())
         .insert_resource(Msaa::Sample8)
         .insert_resource(Insights {
@@ -90,10 +94,7 @@ impl Plugin for SiliconPlugin {
         .add_systems(FixedUpdate, insert_current)
         .add_systems(PostStartup, notify_setup_done)
         .add_systems(Update, show_select_neuron_synapses)
-        .add_systems(
-            Update,
-            (update_neurons, update_neuron_materials, mouse_click),
-        )
+        .add_systems(Update, (update_neuron_materials, mouse_click))
         .add_systems(
             Startup,
             ((create_neurons, create_synapses).chain(), setup_scene),
@@ -112,12 +113,13 @@ fn hide_meshes(mut visibilities: Query<&mut Visibility>) {
 // Inherited visibilty didn't work for me, so I had to query the children and set their visibility too
 fn show_select_neuron_synapses(
     insights: Res<Insights>,
-    mut synapse_query: Query<(&SimpleSynapse, &mut Visibility, &Children)>,
-    mut child_query: Query<&mut Visibility, Without<SimpleSynapse>>,
+    mut synapse_query: Query<(One<&dyn Synapse>, &mut Visibility, &Children)>,
+    mut child_query: Query<&mut Visibility, (Without<StdpSynapse>, Without<SimpleSynapse>)>, // https://github.com/JoJoJet/bevy-trait-query/pull/58
 ) {
     if let Some(selected_entity) = insights.selected_entity {
         for (synapse, mut visibility, children) in synapse_query.iter_mut() {
-            let is_visible = synapse.source == selected_entity || synapse.target == selected_entity;
+            let is_visible = synapse.get_presynaptic() == selected_entity
+                || synapse.get_postsynaptic() == selected_entity;
 
             *visibility = if is_visible {
                 Visibility::Visible
@@ -162,7 +164,7 @@ fn insert_current(mut neurons_query: Query<(Entity, One<&mut dyn Neuron>, &Colum
 
         // only insert current into 50% of L4 neurons
         if rand::random::<f64>() < 0.5 {
-            trace!("Inserting current into neuron {:?}", entity);
+            // trace!("Inserting current into neuron {:?}", entity);
             neuron.add_membrane_potential(rand::thread_rng().gen_range(0.4..=0.8));
         }
     }
@@ -236,7 +238,16 @@ fn create_synapses(
 
         let synapse = commands
             .spawn((
-                SimpleSynapse {
+                StdpSynapse {
+                    stdp_params: StdpParams {
+                        a_plus: 0.01,
+                        a_minus: -0.01,
+                        tau_plus: 0.02,
+                        tau_minus: 0.02,
+                        w_max: 1.0,
+                        w_min: 0.0,
+                        synapse_type,
+                    },
                     source: match synapse_direction {
                         true => pre_entity,
                         false => post_entity,
@@ -295,29 +306,6 @@ fn create_synapses(
             "Synapse created: {:?}, connected {:?} to {:?}",
             synapse, pre_entity, post_entity
         );
-    }
-}
-
-fn update_neurons(
-    clock: ResMut<Clock>,
-    mut neuron_query: Query<(Entity, One<&mut dyn Neuron>, Option<&mut MembranePlotter>)>,
-    mut spike_writer: EventWriter<SpikeEvent>,
-) {
-    for (entity, mut neuron, mut plotter) in neuron_query.iter_mut() {
-        let fired = neuron.update(clock.tau);
-        if let Some(plotter) = &mut plotter {
-            plotter.add_point(neuron.get_membrane_potential(), clock.time);
-            if fired {
-                plotter.add_spike(clock.time);
-            }
-        }
-
-        if fired {
-            spike_writer.send(SpikeEvent {
-                time: clock.time,
-                neuron: entity,
-            });
-        }
     }
 }
 

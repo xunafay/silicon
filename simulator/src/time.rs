@@ -1,11 +1,6 @@
-use bevy::prelude::{ResMut, Resource};
+use bevy::prelude::ResMut;
+use silicon_core::Clock;
 
 pub(crate) fn update_clock(mut clock: ResMut<Clock>) {
     clock.time += clock.tau;
-}
-
-#[derive(Resource)]
-pub struct Clock {
-    pub time: f64,
-    pub tau: f64,
 }

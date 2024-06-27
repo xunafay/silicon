@@ -18,3 +18,5 @@ transform-gizmo-egui = "0.2.0"
 neurons = { path = "../neurons" }
 simulator = { path = "../simulator" }
 synapses = { path = "../synapses" }
+silicon-core = { path = "../silicon-core" }
+analytics = { path = "../analytics" }

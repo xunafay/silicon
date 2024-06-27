@@ -130,6 +130,11 @@ dependencies = [
 [[package]]
 name = "analytics"
 version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy-trait-query",
+ "silicon-core",
+]
 
 [[package]]
 name = "android-activity"
@@ -2895,6 +2900,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy-trait-query",
+ "silicon-core",
 ]
 
 [[package]]
@@ -3800,6 +3806,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 name = "silicon"
 version = "0.1.0"
 dependencies = [
+ "analytics",
  "bevy",
  "bevy-inspector-egui",
  "bevy-trait-query",
@@ -3811,9 +3818,18 @@ dependencies = [
  "egui_plot",
  "neurons",
  "rand",
+ "silicon-core",
  "simulator",
  "synapses",
  "transform-gizmo-egui",
+]
+
+[[package]]
+name = "silicon-core"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy-trait-query",
 ]
 
 [[package]]
@@ -3839,7 +3855,12 @@ checksum = "d66dc143e6b11c1eddc06d5c423cfc97062865baf299914ab64caa38182078fe"
 name = "simulator"
 version = "0.1.0"
 dependencies = [
+ "analytics",
  "bevy",
+ "bevy-trait-query",
+ "silicon-core",
+ "synapses",
+ "tracing",
 ]
 
 [[package]]
@@ -3970,8 +3991,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy-trait-query",
- "neurons",
- "simulator",
+ "silicon-core",
 ]
 
 [[package]]

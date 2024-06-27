@@ -1,5 +1,6 @@
 use std::any::TypeId;
 
+use analytics::MembranePlotter;
 use bevy::{
     asset::{ReflectAsset, UntypedAssetId},
     log::info,
@@ -17,10 +18,10 @@ use bevy_inspector_egui::bevy_inspector::{
 use bevy_math::Mat4;
 use egui_dock::{DockArea, DockState, NodeIndex, Style};
 use egui_plot::{Legend, Line, Plot, VLine};
-use simulator::time::Clock;
+use silicon_core::Clock;
 use transform_gizmo_egui::{Color32, GizmoMode};
 
-use crate::{data::MembranePlotter, Insights};
+use crate::Insights;
 
 use super::SimulationUiState;
 
