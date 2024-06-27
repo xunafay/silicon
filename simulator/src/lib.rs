@@ -317,19 +317,16 @@ impl SpikeRecorder for SimpleSpikeRecorder {
         }
     }
 
-    /// returns a copy of the recorded spikes and clears the internal buffer.
     fn get_spikes(&mut self) -> Vec<f64> {
-        let spikes = self.spikes.clone();
-        self.spikes.clear();
-        spikes
+        self.spikes.clone()
     }
 }
 
 impl Default for SimpleSpikeRecorder {
     fn default() -> Self {
         SimpleSpikeRecorder {
-            max_spikes: 100,
-            spikes: Vec::with_capacity(100),
+            max_spikes: 1000,
+            spikes: Vec::with_capacity(1000),
         }
     }
 }
