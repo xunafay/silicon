@@ -311,7 +311,7 @@ fn select_asset(
     }
 }
 
-#[allow(unused)]
+#[allow(unused, clippy::needless_return)]
 fn draw_gizmo(
     ui: &mut egui::Ui,
     world: &mut World,

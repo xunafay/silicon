@@ -66,3 +66,9 @@ impl MembranePlotter {
             .collect()
     }
 }
+
+impl Default for MembranePlotter {
+    fn default() -> Self {
+        Self::new()
+    }
+}

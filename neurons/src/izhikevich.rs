@@ -21,7 +21,7 @@ impl Neuron for IzhikevichNeuron {
         self.u = u;
         if self.v >= 30.0 {
             self.v = self.c;
-            self.u = self.u + self.d;
+            self.u += self.d;
             return true;
         }
 

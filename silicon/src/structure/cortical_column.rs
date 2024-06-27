@@ -14,7 +14,6 @@ use bevy::{
 use bevy_math::primitives::Cuboid;
 use bevy_rapier3d::geometry::Collider;
 use neurons::izhikevich::IzhikevichNeuron;
-use silicon_core::SpikeRecorder;
 use simulator::SimpleSpikeRecorder;
 use synapses::AllowSynapses;
 
@@ -44,38 +43,6 @@ impl ColumnLayer {
             ColumnLayer::L5 => Color::rgb(1.0, 1.0, 0.0),
             ColumnLayer::L6 => Color::rgb(1.0, 0.5, 0.0),
         }
-    }
-
-    pub fn get_color_from_potential(
-        &self,
-        membrane_potential: f32,
-        resting_potential: f32,
-        threshold_potential: f32,
-    ) -> Color {
-        let color = self.get_color();
-        Color::rgb_linear(
-            refit_to_range(
-                membrane_potential,
-                resting_potential,
-                threshold_potential,
-                0.0,
-                color.r() * 2000.0,
-            ),
-            refit_to_range(
-                membrane_potential,
-                resting_potential,
-                threshold_potential,
-                0.0,
-                color.g() * 2000.0,
-            ),
-            refit_to_range(
-                membrane_potential,
-                resting_potential,
-                threshold_potential,
-                0.0,
-                color.b() * 2000.0,
-            ),
-        )
     }
 
     pub fn get_color_from_activation(&self, activation_percentage: f64) -> Color {

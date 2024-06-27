@@ -1,20 +1,19 @@
+#![allow(clippy::type_complexity)]
+
 use analytics::MembranePlotter;
 use bevy::{
     app::{App, Plugin, Update},
     hierarchy::DespawnRecursiveExt,
     prelude::{Commands, Component, Entity, Event, EventReader, EventWriter, Query, Res, ResMut},
-    time::Time,
-    utils::info,
 };
 use bevy_trait_query::{One, RegisterExt};
 use silicon_core::{Clock, Neuron, SpikeRecorder};
 use synapses::{
-    simple::SimpleSynapse,
     stdp::{StdpSettings, StdpSynapse},
     Synapse, SynapseType,
 };
 use time::update_clock;
-use tracing::{debug, info, trace, warn};
+use tracing::{info, trace, warn};
 pub mod time;
 
 #[derive(Event, Debug)]
@@ -59,6 +58,7 @@ impl Plugin for SimulationPlugin {
     }
 }
 
+#[allow(unused)]
 fn exhaustive_zip<I, J>(
     mut iter1: I,
     mut iter2: J,

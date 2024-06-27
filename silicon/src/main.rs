@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 use std::time::Duration;
 
 use analytics::SiliconAnalyticsPlugin;
@@ -164,7 +166,7 @@ fn insert_current(
         return;
     }
 
-    for (entity, mut neuron, layer) in neurons_query.iter_mut() {
+    for (_entity, mut neuron, layer) in neurons_query.iter_mut() {
         if layer != &ColumnLayer::L4 {
             continue;
         }
