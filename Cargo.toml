@@ -6,6 +6,7 @@ members = [
     "silicon-core",
     "simulator",
     "synapses",
+    "transcoder",
     "ui",
 ]
 resolver = "2"
