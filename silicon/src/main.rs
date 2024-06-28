@@ -222,12 +222,15 @@ fn create_synapses(
         }
 
         let midpoint = (pre_transform.translation + post_transform.translation) / 2.0;
-        let synapse_pos_post = midpoint + (post_transform.translation - midpoint) / 2.0;
-        let synapse_pos_pre = midpoint + (pre_transform.translation - midpoint) / 2.0;
+        let synapse_pos_pre =
+            (pre_transform.translation + midpoint) / 2.0 - pre_transform.translation;
+        let synapse_pos_post =
+            (post_transform.translation + midpoint) / 2.0 - pre_transform.translation;
         let direction = post_transform.translation - pre_transform.translation;
         let length = direction.length();
         let normalized_direction = direction.normalize();
         let rotation = Quat::from_rotation_arc(Vec3::Y, normalized_direction);
+
         let synapse_stalk_mesh = meshes.add(Capsule3d::new(0.05, length).mesh());
         let synapse_mesh = meshes.add(
             Cylinder {
@@ -255,7 +258,6 @@ fn create_synapses(
                         tau_minus: 0.02,
                         w_max: 1.0,
                         w_min: 0.0,
-                        synapse_type,
                     },
                     source: match synapse_direction {
                         true => pre_entity,
@@ -277,7 +279,7 @@ fn create_synapses(
             ))
             .with_children(|parent| {
                 parent.spawn(PbrBundle {
-                    mesh: synapse_mesh,
+                    mesh: synapse_mesh.clone(),
                     material: match synapse_type {
                         SynapseType::Excitatory => synapse_material_excitory.clone(),
                         SynapseType::Inhibitory => synapse_material_inhibitory.clone(),
@@ -293,6 +295,7 @@ fn create_synapses(
                     visibility: Visibility::Inherited,
                     ..Default::default()
                 });
+
                 parent.spawn(PbrBundle {
                     mesh: synapse_stalk_mesh,
                     material: match synapse_type {
@@ -300,7 +303,7 @@ fn create_synapses(
                         SynapseType::Inhibitory => synapse_material_inhibitory.clone(),
                     },
                     transform: Transform {
-                        translation: midpoint,
+                        translation: midpoint - pre_transform.translation,
                         rotation,
                         ..Default::default()
                     },
@@ -308,7 +311,7 @@ fn create_synapses(
                     ..Default::default()
                 });
             })
-            // .set_parent(parent.get())
+            .set_parent(pre_entity)
             .id();
 
         info!(
