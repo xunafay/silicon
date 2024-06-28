@@ -1,15 +1,18 @@
-use bevy::prelude::{Component, Entity, Resource};
+use bevy::{
+    prelude::{Component, Entity, Resource},
+    reflect::Reflect,
+};
 
 use crate::{Synapse, SynapseType};
 
-#[derive(Debug, Resource)]
+#[derive(Debug, Resource, Reflect)]
 pub struct StdpSettings {
     pub look_back: f64,
     pub update_interval: f64,
     pub next_update: f64,
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Reflect)]
 pub struct StdpSynapse {
     pub weight: f64,
     pub delay: u32,
@@ -19,7 +22,7 @@ pub struct StdpSynapse {
     pub stdp_params: StdpParams,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Reflect)]
 pub struct StdpParams {
     pub a_plus: f64,
     pub a_minus: f64,
@@ -27,7 +30,6 @@ pub struct StdpParams {
     pub tau_minus: f64,
     pub w_max: f64,
     pub w_min: f64,
-    pub synapse_type: SynapseType,
 }
 
 impl Synapse for StdpSynapse {

@@ -16,9 +16,11 @@ use bevy_inspector_egui::bevy_inspector::{
     ui_for_entities_shared_components, ui_for_entity_with_children,
 };
 use bevy_math::Mat4;
+use bevy_trait_query::One;
 use egui_dock::{DockArea, DockState, NodeIndex, Style};
 use egui_plot::{Legend, Line, Plot, VLine};
-use silicon_core::Clock;
+use silicon_core::{Clock, Neuron};
+use synapses::Synapse;
 use transform_gizmo_egui::{Color32, GizmoMode};
 
 use crate::Insights;
@@ -47,23 +49,12 @@ impl UiState {
         let tree = state.main_surface_mut();
         // let [game, _inspector] =
         //     tree.split_right(NodeIndex::root(), 0.75, vec![EguiWindow::Inspector]);
-        let [game, _bottom] = tree.split_below(
-            NodeIndex::root(),
-            0.8,
-            vec![
-                EguiWindow::NeuronInspector,
-                EguiWindow::Resources,
-                EguiWindow::Assets,
-            ],
-        );
+        let [game, _bottom] =
+            tree.split_below(NodeIndex::root(), 0.8, vec![EguiWindow::GraphViewer]);
         let [_game, _hierarchy] = tree.split_right(
             game,
             0.75,
-            vec![
-                EguiWindow::SimulationSettings,
-                EguiWindow::Hierarchy,
-                EguiWindow::Inspector,
-            ],
+            vec![EguiWindow::SimulationSettings, EguiWindow::NeuronInspector],
         );
 
         Self {
@@ -96,8 +87,9 @@ pub enum EguiWindow {
     Resources,
     Assets,
     Inspector,
-    NeuronInspector,
+    GraphViewer,
     SimulationSettings,
+    NeuronInspector,
 }
 struct TabViewer<'a> {
     world: &'a mut World,
@@ -154,13 +146,61 @@ impl egui_dock::TabViewer for TabViewer<'_> {
                     );
                 }
             },
-            EguiWindow::NeuronInspector => {
+            EguiWindow::GraphViewer => {
                 ui.label("Neuron Inspector");
-                neuron_inspection(ui, self.world);
+                membrane_graph(ui, self.world);
             }
             EguiWindow::SimulationSettings => {
                 ui.label("Simulation Settings");
                 simulation_settings(ui, self.world);
+            }
+            EguiWindow::NeuronInspector => {
+                let selected = {
+                    let insights = self.world.get_resource::<Insights>().unwrap();
+                    insights.selected_entity.clone()
+                };
+
+                if let Some(selected) = selected {
+                    bevy_inspector::ui_for_entity(self.world, selected, ui);
+                    ui.separator();
+                    let outgoing_synapses = self
+                        .world
+                        .query::<(Entity, One<&dyn Synapse>)>()
+                        .iter(self.world)
+                        .filter_map(|(entity, synapse)| {
+                            if synapse.get_presynaptic() == selected {
+                                Some(entity)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>();
+
+                    let incoming_synapses = self
+                        .world
+                        .query::<(Entity, One<&dyn Synapse>)>()
+                        .iter(self.world)
+                        .filter_map(|(entity, synapse)| {
+                            if synapse.get_postsynaptic() == selected {
+                                Some(entity)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>();
+
+                    ui.label("Outgoing synapses");
+                    for entity in outgoing_synapses {
+                        bevy_inspector::ui_for_entity(self.world, entity, ui);
+                    }
+                    ui.separator();
+                    ui.label("Incoming synapses");
+                    for entity in incoming_synapses {
+                        bevy_inspector::ui_for_entity(self.world, entity, ui);
+                    }
+                } else {
+                    ui.label("No neuron selected");
+                }
             }
         }
     }
@@ -205,9 +245,21 @@ fn simulation_settings(ui: &mut egui::Ui, world: &mut World) {
             }
         })
     });
+
+    ui.separator();
+
+    ui.label(format!(
+        "Total neurons: {}",
+        world.query::<One<&dyn Neuron>>().iter(world).count(),
+    ));
+
+    ui.label(format!(
+        "Total synapses: {}",
+        world.query::<One<&dyn Synapse>>().iter(world).count(),
+    ));
 }
 
-fn neuron_inspection(ui: &mut egui::Ui, world: &mut World) {
+fn membrane_graph(ui: &mut egui::Ui, world: &mut World) {
     let mut plotters = world.query::<(Entity, &MembranePlotter)>();
     let insights = world.get_resource::<Insights>().unwrap();
     let clock = world.get_resource::<Clock>().unwrap();

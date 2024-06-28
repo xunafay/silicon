@@ -14,6 +14,8 @@ impl Plugin for NeuronPlugin {
         app.register_component_as::<dyn Neuron, LifNeuron>()
             .register_component_as::<dyn Neuron, IzhikevichNeuron>()
             .register_component_as::<dyn NeuronVisualizer, LifNeuron>()
-            .register_component_as::<dyn NeuronVisualizer, IzhikevichNeuron>();
+            .register_component_as::<dyn NeuronVisualizer, IzhikevichNeuron>()
+            .register_type::<IzhikevichNeuron>()
+            .register_type::<LifNeuron>();
     }
 }

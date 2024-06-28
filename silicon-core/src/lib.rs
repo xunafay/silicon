@@ -1,4 +1,4 @@
-use bevy::prelude::Resource;
+use bevy::{prelude::Resource, reflect::Reflect};
 
 #[bevy_trait_query::queryable]
 /// Core trait for neurons. Simulator queries for this trait and calls update for every simulation time tick.
@@ -23,7 +23,7 @@ pub trait SpikeRecorder {
     fn get_spikes(&mut self) -> Vec<f64>;
 }
 
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 pub struct Clock {
     pub time: f64,
     pub time_to_simulate: f64,

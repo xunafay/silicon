@@ -1,8 +1,11 @@
-use bevy::prelude::{Component, Entity};
+use bevy::{
+    prelude::{Component, Entity},
+    reflect::Reflect,
+};
 
 use crate::{Synapse, SynapseType};
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Reflect)]
 pub struct SimpleSynapse {
     pub weight: f64,
     pub delay: u32,

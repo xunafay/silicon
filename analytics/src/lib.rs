@@ -1,6 +1,7 @@
 use bevy::{
     app::{App, Plugin, Update},
     prelude::{Component, Query, Res},
+    reflect::Reflect,
 };
 use bevy_trait_query::One;
 use silicon_core::{Clock, Neuron};
@@ -9,7 +10,9 @@ pub struct SiliconAnalyticsPlugin;
 
 impl Plugin for SiliconAnalyticsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, update_plotters);
+        app.add_systems(Update, update_plotters)
+            .register_type::<MembranePlotter>()
+            .register_type::<MembranePlotPoint>();
     }
 }
 
@@ -22,13 +25,13 @@ fn update_plotters(
     }
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Reflect)]
 pub struct MembranePlotter {
     pub points: Vec<MembranePlotPoint>,
     pub spikes: Vec<f64>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Reflect)]
 pub struct MembranePlotPoint {
     pub potential: f64,
     pub time: f64,

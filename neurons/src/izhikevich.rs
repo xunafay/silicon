@@ -1,8 +1,8 @@
-use bevy::prelude::Component;
+use bevy::{prelude::Component, reflect::Reflect};
 
 use super::{Neuron, NeuronVisualizer};
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Reflect)]
 pub struct IzhikevichNeuron {
     pub a: f64,
     pub b: f64,

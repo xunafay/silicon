@@ -5,6 +5,7 @@ use bevy::{
     app::{App, Plugin, Update},
     hierarchy::DespawnRecursiveExt,
     prelude::{Commands, Component, Entity, Event, EventReader, EventWriter, Query, Res, ResMut},
+    reflect::Reflect,
 };
 use bevy_trait_query::{One, RegisterExt};
 use silicon_core::{Clock, Neuron, SpikeRecorder};
@@ -43,6 +44,10 @@ impl Plugin for SimulationPlugin {
             update_interval: 1.0,
             next_update: -0.1,
         })
+        .register_type::<Clock>()
+        .register_type::<StdpSettings>()
+        .register_type::<MembranePlotter>()
+        .register_type::<SimpleSpikeRecorder>()
         .add_event::<SpikeEvent>()
         .register_component_as::<dyn SpikeRecorder, SimpleSpikeRecorder>()
         .add_systems(
@@ -93,26 +98,16 @@ pub fn prune_synapses(
     mut synapse_query: Query<(Entity, One<&dyn Synapse>)>,
     mut commands: Commands,
 ) {
-    let mut pruned = 0;
-
     for (entity, synapse) in synapse_query.iter_mut() {
         if synapse.get_weight() < 0.1 {
             info!("Pruning synapse {:?}", entity);
             commands.entity(entity).despawn_recursive();
-            pruned += 1;
         }
-    }
-
-    if pruned > 0 {
-        info!(
-            "{} synapses remaining",
-            synapse_query.iter().count() - pruned
-        );
     }
 }
 
 /// Updates the weights of STDP synapses.
-/// Does not update the membrane potential of the neurons.
+/// Does not update the membrane potential of the connected neurons.
 pub fn update_stdp_synapses(
     mut synapse_query: Query<(Entity, &mut StdpSynapse)>,
     mut neuron_query: Query<(Entity, One<&mut dyn SpikeRecorder>)>,
@@ -196,6 +191,12 @@ pub fn update_stdp_synapses(
                 synapse.weight
             );
         }
+
+        // Clamp the weight to the min and max values.
+        synapse.weight = synapse
+            .weight
+            .max(synapse.stdp_params.w_min)
+            .min(synapse.stdp_params.w_max);
 
         // for (pre, post) in exhaustive_zip(pre_spikes.into_iter(), post_spikes.into_iter()) {
         //     debug!("Pre spike: {:?}, Post spike: {:?}", pre, post);
@@ -303,7 +304,7 @@ fn update_neurons(
     }
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Component, Reflect)]
 pub struct SimpleSpikeRecorder {
     max_spikes: usize,
     spikes: Vec<f64>,

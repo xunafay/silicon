@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use super::{Neuron, NeuronVisualizer};
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Reflect)]
 pub struct LifNeuron {
     pub membrane_potential: f64,
     pub reset_potential: f64,
