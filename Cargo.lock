@@ -3821,6 +3821,7 @@ dependencies = [
  "silicon-core",
  "simulator",
  "synapses",
+ "transcoder",
  "transform-gizmo-egui",
 ]
 

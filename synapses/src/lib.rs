@@ -25,7 +25,7 @@ pub trait Synapse {
     fn get_type(&self) -> SynapseType;
 }
 
-#[derive(Debug, Copy, Clone, Default, Reflect)]
+#[derive(Debug, PartialEq, Copy, Clone, Default, Reflect)]
 pub enum SynapseType {
     #[default]
     Excitatory,

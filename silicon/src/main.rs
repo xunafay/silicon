@@ -32,6 +32,7 @@ use synapses::{
     stdp::{StdpParams, StdpSynapse},
     Synapse, SynapsePlugin, SynapseType,
 };
+use transcoder::nlp::string_to_spike_train;
 use ui::{state::UiState, SiliconUiPlugin};
 
 mod structure;
@@ -93,7 +94,8 @@ impl Plugin for SiliconPlugin {
             selected_entity: None,
         })
         .insert_resource(Time::<Fixed>::from_duration(Duration::from_millis(5000)))
-        .add_systems(FixedUpdate, insert_current)
+        .insert_resource(EncoderState::default())
+        .add_systems(Update, insert_current)
         .add_systems(PostStartup, notify_setup_done)
         .add_systems(Update, show_select_neuron_synapses)
         .add_systems(Update, (update_neuron_materials, mouse_click))
@@ -158,23 +160,61 @@ fn notify_setup_done() {
     info!("Setup done!");
 }
 
+#[derive(Debug, Resource, Reflect)]
+struct EncoderState {
+    pub is_playing: bool,
+    pub current_time: f64,
+    pub paused_time: f64,
+    pub spike_train: Vec<f64>,
+}
+
+impl Default for EncoderState {
+    fn default() -> Self {
+        EncoderState {
+            is_playing: false,
+            current_time: 0.0,
+            paused_time: 5.0,
+            spike_train: Vec::new(),
+        }
+    }
+}
+
 fn insert_current(
     mut neurons_query: Query<(Entity, One<&mut dyn Neuron>, &ColumnLayer)>,
     clock: Res<Clock>,
+    mut encoder: ResMut<EncoderState>,
 ) {
     if clock.time_to_simulate <= 0.0 {
         return;
     }
 
-    for (_entity, mut neuron, layer) in neurons_query.iter_mut() {
-        if layer != &ColumnLayer::L4 {
-            continue;
-        }
+    if encoder.is_playing {
+        encoder.current_time += clock.tau;
+        let last = encoder.spike_train.last();
+        if let Some(last) = last {
+            if last <= &encoder.current_time {
+                encoder.spike_train.pop();
+                for (_, mut neuron, layer) in neurons_query.iter_mut() {
+                    if layer != &ColumnLayer::L4 {
+                        continue;
+                    }
 
-        // only insert current into 50% of L4 neurons
-        if rand::random::<f64>() < 0.5 {
-            // trace!("Inserting current into neuron {:?}", entity);
-            neuron.add_membrane_potential(rand::thread_rng().gen_range(0.4..=0.8));
+                    neuron.add_membrane_potential(rand::thread_rng().gen_range(0.4..=0.8));
+                }
+            }
+        } else {
+            trace!("End of spike train");
+            encoder.is_playing = false;
+            encoder.paused_time = 5.0;
+            encoder.current_time = 0.0;
+        }
+    } else {
+        encoder.paused_time -= clock.tau;
+        if encoder.paused_time <= 0.0 {
+            encoder.is_playing = true;
+            encoder.spike_train = string_to_spike_train("hello", 5.0);
+            encoder.spike_train.reverse();
+            trace!("Playing spike train: {:?}", encoder.spike_train);
         }
     }
 }

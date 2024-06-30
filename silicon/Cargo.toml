@@ -20,3 +20,4 @@ simulator = { path = "../simulator" }
 synapses = { path = "../synapses" }
 silicon-core = { path = "../silicon-core" }
 analytics = { path = "../analytics" }
+transcoder = { path = "../transcoder" }

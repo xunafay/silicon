@@ -106,6 +106,9 @@ pub fn prune_synapses(
     }
 }
 
+/// This needs to be rewritten to an event based system.
+/// Too many bugs with the current implementation.
+///
 /// Updates the weights of STDP synapses.
 /// Does not update the membrane potential of the connected neurons.
 pub fn update_stdp_synapses(
@@ -122,6 +125,10 @@ pub fn update_stdp_synapses(
     stdp_settings.next_update = stdp_settings.update_interval;
 
     for (entity, mut synapse) in synapse_query.iter_mut() {
+        if synapse.get_type() == SynapseType::Inhibitory {
+            continue;
+        }
+
         let pre_spikes: Vec<f64> = {
             let pre_neuron = neuron_query.get_mut(synapse.source);
             if pre_neuron.is_err() {

@@ -9,7 +9,7 @@ use bevy::{
     render::camera::{Camera, CameraProjection, Projection},
     transform::components::GlobalTransform,
 };
-use bevy_egui::egui::{self};
+use bevy_egui::egui::{self, Vec2b};
 use bevy_inspector_egui::bevy_inspector::{
     self,
     hierarchy::{hierarchy_ui, SelectedEntities},
@@ -279,13 +279,13 @@ fn membrane_graph(ui: &mut egui::Ui, world: &mut World) {
 
     if let Some((entity, plotter)) = selected_plotter {
         plot.show(ui, |plot_ui| {
-            let spikes = plotter.spike_lines(100.0, clock.time);
+            let spikes = plotter.spike_lines(100000.0, clock.time);
             for spike in spikes {
                 plot_ui.vline(VLine::new(spike).color(Color32::RED));
             }
 
             plot_ui.line(
-                Line::new(plotter.plot_points(100.0, clock.time))
+                Line::new(plotter.plot_points(100000.0, clock.time))
                     .name(format!("{:?}", entity))
                     .color(Color32::BLUE),
             );
