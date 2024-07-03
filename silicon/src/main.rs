@@ -330,8 +330,8 @@ fn create_synapses(
                     },
                     transform: Transform {
                         translation: match synapse_direction {
-                            true => synapse_pos_pre,
-                            false => synapse_pos_post,
+                            true => synapse_pos_post,
+                            false => synapse_pos_pre,
                         },
                         rotation,
                         ..Default::default()
