@@ -26,7 +26,7 @@ use neurons::NeuronPlugin;
 use rand::Rng;
 use silicon_core::{Clock, Neuron, NeuronVisualizer};
 use simulator::SimulationPlugin;
-use structure::cortical_column::{ColumnLayer, MiniColumn};
+use structure::{cortical_column::MiniColumn, layer::ColumnLayer, test_column::TestColumn};
 use synapses::{
     simple::SimpleSynapse,
     stdp::{StdpParams, StdpSynapse},
