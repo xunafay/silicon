@@ -15,6 +15,8 @@ pub struct SimpleSynapse {
 }
 
 impl Synapse for SimpleSynapse {
+    fn update(&mut self, _tau: f64) {}
+
     fn get_weight(&self) -> f64 {
         self.weight
     }

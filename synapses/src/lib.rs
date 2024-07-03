@@ -16,6 +16,8 @@ pub struct AllowSynapses;
 
 #[bevy_trait_query::queryable]
 pub trait Synapse {
+    fn update(&mut self, tau: f64);
+
     fn get_weight(&self) -> f64;
     fn set_weight(&mut self, weight: f64);
 

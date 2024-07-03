@@ -29,7 +29,7 @@ use simulator::SimulationPlugin;
 use structure::{cortical_column::MiniColumn, layer::ColumnLayer, test_column::TestColumn};
 use synapses::{
     simple::SimpleSynapse,
-    stdp::{StdpParams, StdpSynapse},
+    stdp::{StdpParams, StdpSpikeType, StdpState, StdpSynapse},
     Synapse, SynapsePlugin, SynapseType,
 };
 use transcoder::nlp::string_to_spike_train;
@@ -55,7 +55,7 @@ impl Plugin for SiliconPlugin {
             DefaultPlugins
                 .set(LogPlugin {
                     level: bevy::log::Level::TRACE,
-                    filter: "info,silicon=trace,simulator=trace".into(),
+                    filter: "info,silicon=trace,simulator=trace,synapses=trace".into(),
                     ..Default::default()
                 })
                 .set(WindowPlugin {
@@ -298,6 +298,10 @@ fn create_synapses(
                         tau_minus: 0.02,
                         w_max: 1.0,
                         w_min: 0.0,
+                    },
+                    stdp_state: StdpState {
+                        a: 0.0,
+                        spike_type: StdpSpikeType::PreSpike,
                     },
                     source: match synapse_direction {
                         true => pre_entity,

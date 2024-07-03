@@ -9,7 +9,7 @@ use bevy::{
     render::camera::{Camera, CameraProjection, Projection},
     transform::components::GlobalTransform,
 };
-use bevy_egui::egui::{self, Vec2b};
+use bevy_egui::egui::{self};
 use bevy_inspector_egui::bevy_inspector::{
     self,
     hierarchy::{hierarchy_ui, SelectedEntities},
