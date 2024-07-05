@@ -26,7 +26,7 @@ use neurons::NeuronPlugin;
 use rand::Rng;
 use silicon_core::{Clock, Neuron, NeuronVisualizer};
 use simulator::SimulationPlugin;
-use structure::{cortical_column::MiniColumn, layer::ColumnLayer, test_column::TestColumn};
+use structure::{feed_forward::FeedForwardNetwork, layer::ColumnLayer};
 use synapses::{
     simple::SimpleSynapse,
     stdp::{StdpParams, StdpSpikeType, StdpState, StdpSynapse},
@@ -99,10 +99,7 @@ impl Plugin for SiliconPlugin {
         .add_systems(PostStartup, notify_setup_done)
         .add_systems(Update, show_select_neuron_synapses)
         .add_systems(Update, (update_neuron_materials, mouse_click))
-        .add_systems(
-            Startup,
-            ((create_neurons, create_synapses).chain(), setup_scene),
-        );
+        .add_systems(Startup, (create_neurons, setup_scene));
         // .add_systems(PostStartup, hide_meshes) // hide meshes if you need some extra performance
     }
 }
@@ -195,7 +192,7 @@ fn insert_current(
             if last <= &encoder.current_time {
                 encoder.spike_train.pop();
                 for (_, mut neuron, layer) in neurons_query.iter_mut() {
-                    if layer != &ColumnLayer::L4 {
+                    if layer != &ColumnLayer::L1 {
                         continue;
                     }
 
@@ -219,12 +216,21 @@ fn insert_current(
     }
 }
 
-fn create_neurons(
-    commands: Commands,
-    meshes: ResMut<Assets<Mesh>>,
-    materials: ResMut<Assets<StandardMaterial>>,
-) {
-    MiniColumn::create(commands, meshes, materials);
+fn create_neurons(world: &mut World) {
+    // MiniColumn::create(commands, meshes, materials);
+
+    let mut ffn = FeedForwardNetwork::new();
+    ffn.add_layer(3, 3, 1, world, Some(ColumnLayer::L1));
+    ffn.add_layer(3, 3, 1, world, Some(ColumnLayer::L2));
+    // ffn.add_layer(3, 3, 1, world, Some(ColumnLayer::L3));
+    ffn.add_layer(3, 3, 1, world, Some(ColumnLayer::L4));
+    // ffn.add_layer(3, 3, 1, world, Some(ColumnLayer::L5));
+    ffn.add_wta_layer(2, 1, 1, world, Some(ColumnLayer::L6));
+    ffn.connect_layers(0, 1, 0.8, 0.8, world);
+    ffn.connect_layers(1, 2, 0.8, 0.8, world);
+    ffn.connect_layers(2, 3, 1.0, 0.8, world);
+    // ffn.connect_layers(3, 4, 0.8, 0.8, world);
+    // ffn.connect_layers(4, 5, 1.0, 0.8, world);
 }
 
 fn create_synapses(

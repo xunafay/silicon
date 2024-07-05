@@ -1,6 +1,6 @@
-use bevy::{prelude::Component, render::color::Color};
+use bevy::{prelude::Component, reflect::Reflect, render::color::Color};
 
-#[derive(Component, Debug, PartialEq)]
+#[derive(Component, Debug, PartialEq, Clone, Copy, Reflect)]
 pub enum ColumnLayer {
     L1,
     L2,
