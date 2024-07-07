@@ -53,32 +53,31 @@ pub struct StdpParams {
 }
 
 impl StdpSynapse {
-    pub fn register_pre_spike(&mut self) {
+    pub fn register_pre_spike(&mut self) -> Option<f64> {
+        let mut delta_w: Option<f64> = None;
+
         if self.stdp_state.a.abs() > f64::EPSILON
             && self.stdp_state.spike_type == StdpSpikeType::PostSpike
         {
-            trace!("Updating weight: {} because we registered an incoming spike after an outgoing spike", self.weight);
-            self.weight = (self.weight + self.stdp_state.a)
-                .min(self.stdp_params.w_max)
-                .max(self.stdp_params.w_min);
+            delta_w = Some(self.stdp_state.a);
         }
 
         self.stdp_state.spike_type = StdpSpikeType::PreSpike;
         self.stdp_state.a = self.stdp_params.a_plus;
+        delta_w
     }
 
-    pub fn register_post_spike(&mut self) {
+    pub fn register_post_spike(&mut self) -> Option<f64> {
+        let mut delta_w = None;
         if self.stdp_state.a.abs() > f64::EPSILON
             && self.stdp_state.spike_type == StdpSpikeType::PreSpike
         {
-            trace!("Updating weight: {} because we registered an outgoing spike after an incoming spike", self.weight);
-            self.weight = (self.weight - self.stdp_state.a)
-                .min(self.stdp_params.w_max)
-                .max(self.stdp_params.w_min);
+            delta_w = Some(self.stdp_state.a);
         }
 
         self.stdp_state.spike_type = StdpSpikeType::PostSpike;
         self.stdp_state.a = self.stdp_params.a_minus;
+        delta_w
     }
 }
 

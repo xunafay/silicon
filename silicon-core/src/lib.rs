@@ -20,7 +20,7 @@ pub trait NeuronVisualizer {
 /// This is not enforced by the trait. But prevents memory from getting out of hand during long simulation times.
 pub trait SpikeRecorder {
     fn record_spike(&mut self, time: f64);
-    fn get_spikes(&mut self) -> Vec<f64>;
+    fn get_spikes(&self) -> Vec<f64>;
 }
 
 #[derive(Resource, Reflect)]

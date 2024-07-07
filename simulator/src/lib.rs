@@ -4,14 +4,16 @@ use analytics::MembranePlotter;
 use bevy::{
     app::{App, Plugin, Update},
     hierarchy::DespawnRecursiveExt,
-    prelude::{Commands, Component, Entity, Event, EventReader, EventWriter, Query, Res, ResMut},
+    prelude::{
+        Commands, Component, Entity, Event, EventReader, EventWriter, Events, Query, Res, ResMut,
+    },
     reflect::Reflect,
 };
 use bevy_trait_query::{One, RegisterExt};
 use silicon_core::{Clock, Neuron, SpikeRecorder};
 use synapses::{
     stdp::{StdpSettings, StdpSynapse},
-    Synapse, SynapseType,
+    DeferredStdpEvent, Synapse, SynapseType,
 };
 use time::update_clock;
 use tracing::{info, trace, warn};
@@ -58,6 +60,7 @@ impl Plugin for SimulationPlugin {
                 update_synapses_for_spikes,
                 update_synapses,
                 prune_synapses,
+                // reward_modulated_stdp,
             ),
         );
     }
@@ -92,6 +95,28 @@ where
     }
 
     Some(values.iter().map(|v| (v.clone()).into()).sum::<f64>() / values.len() as f64)
+}
+
+fn reward_modulated_stdp(
+    mut deferred_stdp_events: ResMut<Events<DeferredStdpEvent>>,
+    mut stdp_synapses: Query<(Entity, &mut StdpSynapse)>,
+) {
+    for event in deferred_stdp_events.drain() {
+        let synapse = stdp_synapses
+            .iter_mut()
+            .find(|(entity, _)| *entity == event.synapse);
+
+        if let Some((_, mut synapse)) = synapse {
+            trace!(
+                "applying stdp to {:?} with delta weight {} for a new weight of {}",
+                event.synapse,
+                event.delta_weight,
+                synapse.weight + event.delta_weight
+            );
+
+            synapse.weight += event.delta_weight;
+        }
+    }
 }
 
 pub fn prune_synapses(
@@ -154,6 +179,7 @@ fn update_neurons(
     )>,
     mut stdp_synapses: Query<(Entity, &mut StdpSynapse)>,
     mut spike_writer: EventWriter<SpikeEvent>,
+    mut stdp_writer: EventWriter<DeferredStdpEvent>,
 ) {
     if clock.time_to_simulate <= 0.0 {
         return;
@@ -175,27 +201,45 @@ fn update_neurons(
             });
 
             if let Some(spike_recorder) = &mut spike_recorder {
-                trace!("Recording spike for neuron {:?} at {}", entity, clock.time);
+                // trace!("Recording spike for neuron {:?} at {}", entity, clock.time);
                 spike_recorder.record_spike(clock.time);
             }
 
             stdp_synapses
                 .iter_mut()
                 .find(|(_, s)| s.get_presynaptic() == entity)
-                .map(|(_, mut s)| {
+                .map(|(e, mut s)| {
                     // trace!("Registering pre-spike for synapse {:?}", entity);
-                    s.register_pre_spike();
+                    let delta_w = s.register_pre_spike();
+                    if let Some(delta_w) = delta_w {
+                        stdp_writer.send(DeferredStdpEvent {
+                            synapse: e,
+                            delta_weight: delta_w,
+                        });
+                    }
                 });
 
             stdp_synapses
                 .iter_mut()
                 .find(|(_, s)| s.get_postsynaptic() == entity)
-                .map(|(_, mut s)| {
+                .map(|(e, mut s)| {
                     // trace!("Registering post-spike for synapse {:?}", entity);
-                    s.register_post_spike();
+                    let delta_w = s.register_post_spike();
+                    if let Some(delta_w) = delta_w {
+                        stdp_writer.send(DeferredStdpEvent {
+                            synapse: e,
+                            delta_weight: delta_w,
+                        });
+                    }
                 });
         }
     }
+}
+
+#[derive(Debug, Component, Reflect)]
+pub struct Classifier {
+    pub neurons: Vec<Entity>,
+    pub spikes: Vec<f64>,
 }
 
 #[derive(Debug, Component, Reflect)]
@@ -212,7 +256,7 @@ impl SpikeRecorder for SimpleSpikeRecorder {
         }
     }
 
-    fn get_spikes(&mut self) -> Vec<f64> {
+    fn get_spikes(&self) -> Vec<f64> {
         self.spikes.clone()
     }
 }

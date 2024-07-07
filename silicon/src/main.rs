@@ -24,13 +24,13 @@ use bevy_rapier3d::{
 use bevy_trait_query::One;
 use neurons::NeuronPlugin;
 use rand::Rng;
-use silicon_core::{Clock, Neuron, NeuronVisualizer};
-use simulator::SimulationPlugin;
+use silicon_core::{Clock, Neuron, NeuronVisualizer, SpikeRecorder};
+use simulator::{SimpleSpikeRecorder, SimulationPlugin};
 use structure::{feed_forward::FeedForwardNetwork, layer::ColumnLayer};
 use synapses::{
     simple::SimpleSynapse,
     stdp::{StdpParams, StdpSpikeType, StdpState, StdpSynapse},
-    Synapse, SynapsePlugin, SynapseType,
+    DeferredStdpEvent, Synapse, SynapsePlugin, SynapseType,
 };
 use transcoder::nlp::string_to_spike_train;
 use ui::{state::UiState, SiliconUiPlugin};
@@ -163,6 +163,7 @@ struct EncoderState {
     pub current_time: f64,
     pub paused_time: f64,
     pub spike_train: Vec<f64>,
+    pub class: u32,
 }
 
 impl Default for EncoderState {
@@ -172,14 +173,22 @@ impl Default for EncoderState {
             current_time: 0.0,
             paused_time: 5.0,
             spike_train: Vec::new(),
+            class: 0,
         }
     }
 }
 
 fn insert_current(
-    mut neurons_query: Query<(Entity, One<&mut dyn Neuron>, &ColumnLayer)>,
+    mut neurons_query: Query<(
+        Entity,
+        One<&mut dyn Neuron>,
+        &ColumnLayer,
+        One<&dyn SpikeRecorder>,
+    )>,
     clock: Res<Clock>,
     mut encoder: ResMut<EncoderState>,
+    mut deferred_stdp_events: ResMut<Events<DeferredStdpEvent>>,
+    mut stdp_synapses: Query<(Entity, &mut StdpSynapse)>,
 ) {
     if clock.time_to_simulate <= 0.0 {
         return;
@@ -188,19 +197,41 @@ fn insert_current(
     if encoder.is_playing {
         encoder.current_time += clock.tau;
         let last = encoder.spike_train.last();
+        // trace!(
+        //     "Current time: {}, spike time: {}",
+        //     encoder.current_time,
+        //     last.unwrap_or(&0.0)
+        // );
         if let Some(last) = last {
-            if last <= &encoder.current_time {
+            if last >= &encoder.current_time {
                 encoder.spike_train.pop();
-                for (_, mut neuron, layer) in neurons_query.iter_mut() {
-                    if layer != &ColumnLayer::L1 {
-                        continue;
-                    }
+                let mut input_neurons = neurons_query
+                    .iter_mut()
+                    .filter(|(_, _, layer, _)| *layer == &ColumnLayer::L1)
+                    .collect::<Vec<_>>();
 
-                    neuron.add_membrane_potential(rand::thread_rng().gen_range(0.4..=0.8));
+                input_neurons.sort_by(|(a, _, _, _), (b, _, _, _)| {
+                    let a = a.generation() as f64 + (a.index() as f64 / 10.0);
+                    let b = b.generation() as f64 + (b.index() as f64 / 10.0);
+                    a.partial_cmp(&b).unwrap()
+                });
+
+                match encoder.class {
+                    0 => {
+                        for (_, ref mut neuron, _, _) in input_neurons.iter_mut().step_by(2) {
+                            neuron.add_membrane_potential(rand::thread_rng().gen_range(0.6..=0.8));
+                        }
+                    }
+                    _ => {
+                        for (_, ref mut neuron, _, _) in input_neurons.iter_mut().skip(1).step_by(2)
+                        {
+                            neuron.add_membrane_potential(rand::thread_rng().gen_range(0.6..=0.8));
+                        }
+                    }
                 }
             }
         } else {
-            trace!("End of spike train");
+            trace!("End of spike train for class {}", encoder.class);
             encoder.is_playing = false;
             encoder.paused_time = 5.0;
             encoder.current_time = 0.0;
@@ -208,8 +239,94 @@ fn insert_current(
     } else {
         encoder.paused_time -= clock.tau;
         if encoder.paused_time <= 0.0 {
+            // calculate reward
+            let mut reward = 0.0;
+            let reward_max = 5.0;
+            let reward_min = -5.0;
+            let mut output_neurons = neurons_query
+                .iter()
+                .filter(|(_, _, layer, _)| *layer == &ColumnLayer::L6)
+                .collect::<Vec<_>>();
+            output_neurons.sort_by(|(a, _, _, _), (b, _, _, _)| {
+                let a = a.generation() as f64 + (a.index() as f64 / 10.0);
+                let b = b.generation() as f64 + (b.index() as f64 / 10.0);
+                a.partial_cmp(&b).unwrap()
+            });
+
+            let mut class_for_neuron = 0;
+            for (entity, _, _, spike_recorder) in output_neurons {
+                trace!(
+                    "Calculating reward for neuron {:?} with class {}",
+                    entity,
+                    class_for_neuron
+                );
+                let spikes = spike_recorder
+                    .get_spikes()
+                    .iter()
+                    .filter(|s| **s >= clock.time - 5.0)
+                    .count() as f64;
+
+                let delta_reward = spikes;
+                if spikes == 0.0 {
+                    reward -= 1.0;
+                }
+
+                if class_for_neuron == encoder.class {
+                    reward += delta_reward;
+                } else {
+                    reward -= delta_reward;
+                }
+
+                class_for_neuron += 1;
+
+                trace!("Reward for neuron {:?} is {}", entity, delta_reward);
+            }
+
+            trace!("Total reward: {}", reward);
+            reward = reward.clamp(reward_min, reward_max);
+            trace!("Clamped reward: {}", reward);
+
+            if reward == 0.0 {
+                trace!("reward is zero, randomizing it for network exploration purposes");
+                reward = rand::thread_rng().gen_range(-2.0..=2.0);
+                trace!("Randomized reward: {}", reward);
+            }
+
+            // apply reward modulated STDP
+            for event in deferred_stdp_events.drain() {
+                let synapse = stdp_synapses
+                    .iter_mut()
+                    .find(|(entity, _)| *entity == event.synapse);
+
+                if let Some((_, mut synapse)) = synapse {
+                    // trace!(
+                    //     "applying stdp to {:?} with\ndelta weight {}\nreward modulated delta weight: {}\nnew weight {}",
+                    //     event.synapse,
+                    //     event.delta_weight,
+                    //     event.delta_weight * reward,
+                    //     synapse.weight + event.delta_weight
+                    // );
+
+                    synapse.weight += event.delta_weight * reward;
+                    synapse.weight = synapse
+                        .weight
+                        .clamp(synapse.stdp_params.w_min, synapse.stdp_params.w_max);
+                }
+            }
+
+            // reset the encoder
+            encoder.class = (encoder.class + 1) % 2; // toggle between 0 and 1
             encoder.is_playing = true;
-            encoder.spike_train = string_to_spike_train("hello", 5.0);
+            match encoder.class {
+                0 => {
+                    encoder.spike_train = string_to_spike_train("hello", 5.0);
+                    trace!("Playing spike train: hello");
+                }
+                _ => {
+                    encoder.spike_train = string_to_spike_train("world", 5.0);
+                    trace!("Playing spike train: world");
+                }
+            }
             encoder.spike_train.reverse();
             trace!("Playing spike train: {:?}", encoder.spike_train);
         }
@@ -229,6 +346,10 @@ fn create_neurons(world: &mut World) {
     ffn.connect_layers(0, 1, 0.8, 0.8, world);
     ffn.connect_layers(1, 2, 0.8, 0.8, world);
     ffn.connect_layers(2, 3, 1.0, 0.8, world);
+
+    ffn.connect_layers(1, 0, 0.2, 0.8, world);
+    ffn.connect_layers(2, 1, 0.2, 0.8, world);
+    ffn.connect_layers(3, 2, 0.8, 0.8, world);
     // ffn.connect_layers(3, 4, 0.8, 0.8, world);
     // ffn.connect_layers(4, 5, 1.0, 0.8, world);
 }

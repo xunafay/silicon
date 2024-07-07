@@ -1,6 +1,6 @@
 use bevy::{
     app::{App, Plugin},
-    prelude::{Component, Entity},
+    prelude::{Component, Entity, Event, Events},
     reflect::Reflect,
 };
 use bevy_trait_query::RegisterExt;
@@ -34,6 +34,18 @@ pub enum SynapseType {
     Inhibitory,
 }
 
+/// The primary purpose of this event is to allow for reward modulated STDP. By deferring the
+/// weight update, the reward signal can be used to determine the modify the delta_weight value
+/// before the weight is updated.
+///
+/// This event does not get cleaned up automatically. It is up to the user to ensure that the
+/// event is cleaned up after it is no longer needed.
+#[derive(Debug, PartialEq, Copy, Clone, Reflect, Event)]
+pub struct DeferredStdpEvent {
+    pub synapse: Entity,
+    pub delta_weight: f64,
+}
+
 pub struct SynapsePlugin;
 
 impl Plugin for SynapsePlugin {
@@ -41,6 +53,7 @@ impl Plugin for SynapsePlugin {
         app.register_component_as::<dyn Synapse, SimpleSynapse>()
             .register_component_as::<dyn Synapse, StdpSynapse>()
             .register_type::<SimpleSynapse>()
-            .register_type::<StdpSynapse>();
+            .register_type::<StdpSynapse>()
+            .init_resource::<Events<DeferredStdpEvent>>();
     }
 }
