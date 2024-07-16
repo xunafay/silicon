@@ -6,6 +6,7 @@ use bevy::{
     hierarchy::DespawnRecursiveExt,
     prelude::{
         Commands, Component, Entity, Event, EventReader, EventWriter, Events, Query, Res, ResMut,
+        Resource,
     },
     reflect::Reflect,
 };
@@ -51,6 +52,7 @@ impl Plugin for SimulationPlugin {
         .register_type::<MembranePlotter>()
         .register_type::<SimpleSpikeRecorder>()
         .add_event::<SpikeEvent>()
+        .insert_resource(PruneSettings::default())
         .register_component_as::<dyn SpikeRecorder, SimpleSpikeRecorder>()
         .add_systems(
             Update,
@@ -119,12 +121,24 @@ fn reward_modulated_stdp(
     }
 }
 
+#[derive(Debug, Reflect, Resource)]
+pub struct PruneSettings {
+    pub min_weight: f64,
+}
+
+impl Default for PruneSettings {
+    fn default() -> Self {
+        PruneSettings { min_weight: 0.1 }
+    }
+}
+
 pub fn prune_synapses(
     mut synapse_query: Query<(Entity, One<&dyn Synapse>)>,
     mut commands: Commands,
+    prune_settings: Res<PruneSettings>,
 ) {
     for (entity, synapse) in synapse_query.iter_mut() {
-        if synapse.get_weight() < 0.1 {
+        if synapse.get_weight() < prune_settings.min_weight {
             info!("Pruning synapse {:?}", entity);
             commands.entity(entity).despawn_recursive();
         }
@@ -158,10 +172,10 @@ pub fn update_synapses_for_spikes(
 
                 match synapse.get_type() {
                     SynapseType::Excitatory => {
-                        target_neuron.add_membrane_potential(synapse.get_weight());
+                        target_neuron.insert_current(synapse.get_weight());
                     }
                     SynapseType::Inhibitory => {
-                        target_neuron.add_membrane_potential(-synapse.get_weight());
+                        target_neuron.insert_current(-synapse.get_weight());
                     }
                 }
             }

@@ -32,7 +32,7 @@ impl Neuron for IzhikevichNeuron {
         self.v
     }
 
-    fn add_membrane_potential(&mut self, delta_v: f64) -> f64 {
+    fn insert_current(&mut self, delta_v: f64) -> f64 {
         self.v += delta_v * self.synapse_weight_multiplier;
         self.v
     }

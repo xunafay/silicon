@@ -37,7 +37,7 @@ impl Neuron for LifNeuron {
         self.membrane_potential
     }
 
-    fn add_membrane_potential(&mut self, delta_v: f64) -> f64 {
+    fn insert_current(&mut self, delta_v: f64) -> f64 {
         self.membrane_potential += delta_v;
         self.membrane_potential
     }

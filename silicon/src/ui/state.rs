@@ -20,10 +20,11 @@ use bevy_trait_query::One;
 use egui_dock::{DockArea, DockState, NodeIndex, Style};
 use egui_plot::{Legend, Line, Plot, VLine};
 use silicon_core::{Clock, Neuron};
-use synapses::Synapse;
+use simulator::PruneSettings;
+use synapses::{Synapse, SynapseType};
 use transform_gizmo_egui::{Color32, GizmoMode};
 
-use crate::Insights;
+use crate::{structure::feed_forward::FeedForwardNetwork, EncoderState, Insights};
 
 use super::SimulationUiState;
 
@@ -54,7 +55,11 @@ impl UiState {
         let [_game, _hierarchy] = tree.split_right(
             game,
             0.75,
-            vec![EguiWindow::SimulationSettings, EguiWindow::NeuronInspector],
+            vec![
+                EguiWindow::SimulationSettings,
+                EguiWindow::Training,
+                EguiWindow::NeuronInspector,
+            ],
         );
 
         Self {
@@ -90,6 +95,7 @@ pub enum EguiWindow {
     GraphViewer,
     SimulationSettings,
     NeuronInspector,
+    Training,
 }
 struct TabViewer<'a> {
     world: &'a mut World,
@@ -154,6 +160,10 @@ impl egui_dock::TabViewer for TabViewer<'_> {
                 ui.label("Simulation Settings");
                 simulation_settings(ui, self.world);
             }
+            EguiWindow::Training => {
+                ui.label("Training settings");
+                training_settings(ui, self.world);
+            }
             EguiWindow::NeuronInspector => {
                 let selected = {
                     let insights = self.world.get_resource::<Insights>().unwrap();
@@ -214,6 +224,10 @@ impl egui_dock::TabViewer for TabViewer<'_> {
     }
 }
 
+fn training_settings(ui: &mut egui::Ui, world: &mut World) {
+    bevy_inspector::ui_for_resource::<EncoderState>(world, ui);
+}
+
 fn simulation_settings(ui: &mut egui::Ui, world: &mut World) {
     world.resource_scope(|world, mut clock: Mut<Clock>| {
         ui.label(format!("Simulated time: {:.2}ms", clock.time));
@@ -247,6 +261,82 @@ fn simulation_settings(ui: &mut egui::Ui, world: &mut World) {
     });
 
     ui.separator();
+
+    ui.label("Pruning settings");
+    ui.add(
+        egui::Slider::new(
+            &mut world
+                .get_resource_mut::<PruneSettings>()
+                .unwrap()
+                .min_weight,
+            0.0..=1.0,
+        )
+        .clamp_to_range(false)
+        .text("Minimum weight to prune"),
+    );
+
+    ui.separator();
+
+    ui.separator();
+    ui.label("Reconnect");
+    let button = ui
+        .button("Reconnect neurons")
+        .on_hover_text("Reconnect neurons");
+    if button.clicked() {
+        info!("Reconnecting neurons");
+
+        let mut new_synapses: Vec<(Entity, Entity, SynapseType)> = vec![];
+
+        let mut neurons = world.query::<(Entity, One<&dyn Neuron>)>();
+        let mut synapses = world.query::<(Entity, One<&dyn Synapse>)>();
+
+        for [(pre_synaptic, _), (post_synaptic, _)] in neurons.iter_combinations(world) {
+            if pre_synaptic == post_synaptic {
+                return;
+            }
+
+            let synapse = synapses
+                .iter(world)
+                .find(|(_, synapse)| {
+                    synapse.get_presynaptic() == pre_synaptic
+                        && synapse.get_postsynaptic() == post_synaptic
+                })
+                .map(|(entity, _)| entity);
+
+            if synapse.is_none() {
+                if rand::random::<f64>() < 0.8 {
+                    continue;
+                }
+
+                info!(
+                    "Reconnecting neurons {:?} and {:?}",
+                    pre_synaptic, post_synaptic
+                );
+
+                let synapse_type = if rand::random::<f64>() < 0.8 {
+                    SynapseType::Excitatory
+                } else {
+                    SynapseType::Inhibitory
+                };
+
+                new_synapses.push((pre_synaptic, post_synaptic, synapse_type));
+            }
+        }
+
+        for synapse in new_synapses {
+            info!(
+                "Creating synapse between {:?} and {:?}",
+                synapse.0, synapse.1
+            );
+            FeedForwardNetwork::create_synapse(
+                &synapse.0,
+                &synapse.1,
+                synapse.2,
+                (0.1, 0.3),
+                world,
+            );
+        }
+    }
 
     ui.label(format!(
         "Total neurons: {}",

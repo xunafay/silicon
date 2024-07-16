@@ -105,7 +105,7 @@ impl FeedForwardNetwork {
         });
     }
 
-    fn create_synapse(
+    pub fn create_synapse(
         pre_neuron: &Entity,
         post_neuron: &Entity,
         synapse_type: SynapseType,

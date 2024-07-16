@@ -219,13 +219,13 @@ fn insert_current(
                 match encoder.class {
                     0 => {
                         for (_, ref mut neuron, _, _) in input_neurons.iter_mut().step_by(2) {
-                            neuron.add_membrane_potential(rand::thread_rng().gen_range(0.6..=0.8));
+                            neuron.insert_current(rand::thread_rng().gen_range(0.6..=0.8));
                         }
                     }
                     _ => {
                         for (_, ref mut neuron, _, _) in input_neurons.iter_mut().skip(1).step_by(2)
                         {
-                            neuron.add_membrane_potential(rand::thread_rng().gen_range(0.6..=0.8));
+                            neuron.insert_current(rand::thread_rng().gen_range(0.6..=0.8));
                         }
                     }
                 }
@@ -267,7 +267,7 @@ fn insert_current(
                     .count() as f64;
 
                 let delta_reward = spikes;
-                if spikes == 0.0 {
+                if spikes == 0.0 && class_for_neuron == encoder.class {
                     reward -= 1.0;
                 }
 
