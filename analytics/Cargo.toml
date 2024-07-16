@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "0.13.2", default-features = false }
-bevy-trait-query = "0.5.1"
+bevy = { version = "0.14.0", default-features = false }
+bevy-trait-query = { git = "https://github.com/Azorlogh/bevy-trait-query.git", branch = "bevy-0.14" }
 silicon-core = { path = "../silicon-core" }

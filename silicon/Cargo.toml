@@ -4,17 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "0.13.2", features = ["dynamic_linking"] }
-bevy-inspector-egui = "0.24.0"
-bevy-trait-query = "0.5.1"
-bevy_egui = "0.27.1"
-bevy_math = "0.13.2"
-bevy_panorbit_camera = "0.18.2"
-bevy_rapier3d = { version = "0.26.0", features = ["debug-render-3d"] }
-egui_dock = "0.12.0"
-egui_plot = "0.27.2"
+bevy = { version = "0.14.0", features = ["dynamic_linking"] }
+bevy-inspector-egui = "0.25.1"
+bevy-trait-query = { git = "https://github.com/Azorlogh/bevy-trait-query.git", branch = "bevy-0.14" }
+bevy_egui = "0.28.0"
+bevy_math = "0.14.0"
+bevy_panorbit_camera = "0.19.1"
+bevy_rapier3d = { version = "0.27.0", features = ["debug-render-3d"] }
+egui_dock = "0.13.0"
+egui_plot = "0.28.1"
 rand = "0.8.5"
-transform-gizmo-egui = "0.2.0"
+transform-gizmo-egui = "0.3.0"
 neurons = { path = "../neurons" }
 simulator = { path = "../simulator" }
 synapses = { path = "../synapses" }

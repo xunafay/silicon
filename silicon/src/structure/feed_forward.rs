@@ -1,19 +1,17 @@
 use analytics::MembranePlotter;
 use bevy::{
     asset::Assets,
-    hierarchy::{BuildChildren, BuildWorldChildren},
+    color::{Color, LinearRgba},
+    hierarchy::BuildWorldChildren,
     log::info,
-    pbr::{AlphaMode, PbrBundle, StandardMaterial},
-    prelude::{Commands, Entity, Mut, ResMut, World},
+    pbr::{PbrBundle, StandardMaterial},
+    prelude::{Entity, Mut, World},
     render::{
-        color::Color,
+        alpha::AlphaMode,
         mesh::{Mesh, Meshable},
         view::Visibility,
     },
-    transform::{
-        commands,
-        components::{GlobalTransform, Transform},
-    },
+    transform::components::{GlobalTransform, Transform},
 };
 use bevy_math::{
     primitives::{Capsule3d, Cuboid, Cylinder},
@@ -50,7 +48,7 @@ impl FeedForwardNetwork {
         world.resource_scope(|world, mut materials: Mut<Assets<StandardMaterial>>| {
             world.resource_scope(|world, mut meshes: Mut<Assets<Mesh>>| {
                 let leaky_neuron_material = materials.add(StandardMaterial {
-                    emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
+                    emissive: LinearRgba::rgb(23.0, 9.0, 3.0),
                     ..Default::default()
                 });
                 let mesh = meshes.add(Cuboid::new(0.5, 0.5, 0.5).mesh());
@@ -115,16 +113,16 @@ impl FeedForwardNetwork {
         let (synapse_material_excitory, synapse_material_inhibitory) =
             world.resource_scope(|world, mut materials: Mut<Assets<StandardMaterial>>| {
                 let synapse_material_excitory = materials.add(StandardMaterial {
-                    base_color: Color::rgba(0.4, 0.4, 1.0, 0.8),
-                    emissive: Color::rgb_linear(0.3, 0.3, 200.0), // Bright green emissive color
-                    alpha_mode: AlphaMode::Blend, // Enable blending for translucency
+                    base_color: Color::srgba(0.4, 0.4, 1.0, 0.8),
+                    emissive: LinearRgba::rgb(0.3, 0.3, 1.0), // Bright green emissive color
+                    alpha_mode: AlphaMode::Blend,             // Enable blending for translucency
                     ..Default::default()
                 });
 
                 let synapse_material_inhibitory = materials.add(StandardMaterial {
-                    base_color: Color::rgba(1.0, 0.4, 0.4, 0.8),
-                    emissive: Color::rgb_linear(200.0, 0.3, 0.3), // Bright red emissive color
-                    alpha_mode: AlphaMode::Blend, // Enable blending for translucency
+                    base_color: Color::srgba(1.0, 0.4, 0.4, 0.8),
+                    emissive: LinearRgba::rgb(1.0, 0.3, 0.3), // Bright red emissive color
+                    alpha_mode: AlphaMode::Blend,             // Enable blending for translucency
                     ..Default::default()
                 });
 
@@ -273,7 +271,7 @@ impl FeedForwardNetwork {
         let (leaky_neuron_material, mesh) =
             world.resource_scope(|world, mut materials: Mut<Assets<StandardMaterial>>| {
                 let leaky_neuron_material = materials.add(StandardMaterial {
-                    emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
+                    emissive: LinearRgba::rgb(23.0, 9.0, 3.0),
                     ..Default::default()
                 });
 
