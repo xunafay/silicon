@@ -3514,6 +3514,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d231b230927b5e4ad203db57bbcbee2802f6bce620b1e4a9024a07d94e2907ec"
 
 [[package]]
+name = "plots"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+]
+
+[[package]]
 name = "png"
 version = "0.17.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3972,9 +3979,11 @@ dependencies = [
  "bevy_math",
  "bevy_panorbit_camera",
  "bevy_rapier3d",
+ "bevy_ui",
  "egui_dock",
  "egui_plot",
  "neurons",
+ "plots",
  "rand",
  "silicon-core",
  "simulator",

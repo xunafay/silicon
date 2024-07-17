@@ -23,7 +23,9 @@ use bevy_rapier3d::{
     plugin::{NoUserData, RapierContext, RapierPhysicsPlugin},
 };
 use bevy_trait_query::One;
+use bevy_ui::UiPlugin;
 use neurons::NeuronPlugin;
+use plots::{Plot, PlotConfig, PlotData, PlotLine};
 use rand::Rng;
 use silicon_core::{Clock, Neuron, NeuronVisualizer, SpikeRecorder};
 use simulator::SimulationPlugin;
@@ -34,7 +36,7 @@ use synapses::{
     DeferredStdpEvent, Synapse, SynapsePlugin, SynapseType,
 };
 use transcoder::nlp::string_to_spike_train;
-use ui::{state::UiState, SiliconUiPlugin};
+use ui::{state::UiState, MainCamera, SiliconUiPlugin};
 
 mod structure;
 mod ui;
@@ -177,6 +179,33 @@ impl Default for EncoderState {
             class: 0,
         }
     }
+}
+
+fn insert_graph(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    commands.spawn((Camera2dBundle::default(), IsDefaultUiCamera));
+    let data = PlotData {
+        hlines: vec![],
+        vlines: vec![],
+        lines: vec![PlotLine {
+            label: Some("line1".to_string()),
+            points: vec![(0.0, 0.0), (1.0, 1.0), (2.0, 0.5), (3.0, 0.75), (4.0, 0.25)],
+            color: Color::rgb(1.0, 0.0, 0.0),
+            width: 2.0,
+        }],
+    };
+    let config = PlotConfig {
+        title: Some("Sample Plot".to_string()),
+        x_label: Some("X Axis".to_string()),
+        y_label: Some("Y Axis".to_string()),
+        width: 800.0,
+        height: 600.0,
+    };
+    let plot = Plot::new(data, config);
+    plot.draw(&mut commands, &mut materials, &asset_server);
 }
 
 fn insert_current(
@@ -496,7 +525,7 @@ fn create_synapses(
 fn mouse_click(
     windows: Query<&Window>,
     button_inputs: Res<ButtonInput<MouseButton>>,
-    query_camera: Query<(&Camera, &GlobalTransform)>,
+    query_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
     rapier_context: Res<RapierContext>,
     ui_state: Res<UiState>,
     egui_settings: Res<bevy_egui::EguiSettings>,
@@ -583,5 +612,6 @@ fn setup_scene(mut commands: Commands) {
         },
         PanOrbitCamera::default(),
         ClusterConfig::Single, // Single cluster for the whole scene as it's small
+        MainCamera {},
     ));
 }

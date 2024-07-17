@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "analytics",
-    "neurons",
+    "neurons", "plots",
     "silicon",
     "silicon-core",
     "simulator",

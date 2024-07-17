@@ -21,3 +21,5 @@ synapses = { path = "../synapses" }
 silicon-core = { path = "../silicon-core" }
 analytics = { path = "../analytics" }
 transcoder = { path = "../transcoder" }
+plots = { path = "../plots" }
+bevy_ui = "0.14.0"
