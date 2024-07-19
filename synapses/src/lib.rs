@@ -62,13 +62,14 @@ fn decay_synapses(
     time: Res<Clock>,
     mut decay: Option<ResMut<SynapseDecay>>,
 ) {
-    let time = time.time;
-    let decay = decay.as_mut().unwrap();
-    if time >= decay.next_decay {
-        decay.next_decay = time + decay.interval;
-        for mut synapse in synapses.iter_mut() {
-            let weight = synapse.get_weight();
-            synapse.set_weight(weight - decay.amount);
+    if let Some(decay) = decay.as_mut() {
+        let time = time.time;
+        if time >= decay.next_decay {
+            decay.next_decay = time + decay.interval;
+            for mut synapse in synapses.iter_mut() {
+                let weight = synapse.get_weight();
+                synapse.set_weight(weight - decay.amount);
+            }
         }
     }
 }
