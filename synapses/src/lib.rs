@@ -1,9 +1,10 @@
 use bevy::{
-    app::{App, Plugin},
-    prelude::{Component, Entity, Event, Events},
+    app::{App, Plugin, Update},
+    prelude::{Component, Entity, Event, Events, Query, Res, ResMut, Resource},
     reflect::Reflect,
 };
-use bevy_trait_query::RegisterExt;
+use bevy_trait_query::{One, RegisterExt};
+use silicon_core::Clock;
 use simple::SimpleSynapse;
 use stdp::StdpSynapse;
 
@@ -46,6 +47,32 @@ pub struct DeferredStdpEvent {
     pub delta_weight: f64,
 }
 
+/// A resource that configures the decay of synapses.
+/// Add this resource to the App to enable synapse decay.
+/// substracts the amount from the weight of all synapses at the interval.
+#[derive(Debug, Clone, Reflect, Resource)]
+pub struct SynapseDecay {
+    pub interval: f64,
+    pub amount: f64,
+    pub next_decay: f64,
+}
+
+fn decay_synapses(
+    mut synapses: Query<One<&mut dyn Synapse>>,
+    time: Res<Clock>,
+    mut decay: Option<ResMut<SynapseDecay>>,
+) {
+    let time = time.time;
+    let decay = decay.as_mut().unwrap();
+    if time >= decay.next_decay {
+        decay.next_decay = time + decay.interval;
+        for mut synapse in synapses.iter_mut() {
+            let weight = synapse.get_weight();
+            synapse.set_weight(weight - decay.amount);
+        }
+    }
+}
+
 pub struct SynapsePlugin;
 
 impl Plugin for SynapsePlugin {
@@ -54,6 +81,7 @@ impl Plugin for SynapsePlugin {
             .register_component_as::<dyn Synapse, StdpSynapse>()
             .register_type::<SimpleSynapse>()
             .register_type::<StdpSynapse>()
-            .init_resource::<Events<DeferredStdpEvent>>();
+            .init_resource::<Events<DeferredStdpEvent>>()
+            .add_systems(Update, decay_synapses);
     }
 }

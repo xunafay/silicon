@@ -277,7 +277,6 @@ fn simulation_settings(ui: &mut egui::Ui, world: &mut World) {
 
     ui.separator();
 
-    ui.separator();
     ui.label("Reconnect");
     let button = ui
         .button("Reconnect neurons")
@@ -338,6 +337,8 @@ fn simulation_settings(ui: &mut egui::Ui, world: &mut World) {
         }
     }
 
+    ui.separator();
+
     ui.label(format!(
         "Total neurons: {}",
         world.query::<One<&dyn Neuron>>().iter(world).count(),
@@ -346,6 +347,16 @@ fn simulation_settings(ui: &mut egui::Ui, world: &mut World) {
     ui.label(format!(
         "Total synapses: {}",
         world.query::<One<&dyn Synapse>>().iter(world).count(),
+    ));
+
+    ui.label(format!(
+        "Average synapse weight: {:.2}",
+        world
+            .query::<One<&dyn Synapse>>()
+            .iter(world)
+            .map(|synapse| synapse.get_weight())
+            .sum::<f64>()
+            / world.query::<One<&dyn Synapse>>().iter(world).count() as f64
     ));
 }
 

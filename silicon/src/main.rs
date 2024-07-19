@@ -25,12 +25,12 @@ use bevy_trait_query::One;
 use neurons::NeuronPlugin;
 use rand::Rng;
 use silicon_core::{Clock, Neuron, NeuronVisualizer, SpikeRecorder};
-use simulator::{SimpleSpikeRecorder, SimulationPlugin};
+use simulator::SimulationPlugin;
 use structure::{feed_forward::FeedForwardNetwork, layer::ColumnLayer};
 use synapses::{
     simple::SimpleSynapse,
     stdp::{StdpParams, StdpSpikeType, StdpState, StdpSynapse},
-    DeferredStdpEvent, Synapse, SynapsePlugin, SynapseType,
+    DeferredStdpEvent, Synapse, SynapseDecay, SynapsePlugin, SynapseType,
 };
 use transcoder::nlp::string_to_spike_train;
 use ui::{state::UiState, SiliconUiPlugin};
@@ -92,6 +92,11 @@ impl Plugin for SiliconPlugin {
         .insert_resource(Msaa::Sample8)
         .insert_resource(Insights {
             selected_entity: None,
+        })
+        .insert_resource(SynapseDecay {
+            interval: 1.0,
+            amount: 0.0001,
+            next_decay: 1.0,
         })
         .insert_resource(Time::<Fixed>::from_duration(Duration::from_millis(5000)))
         .insert_resource(EncoderState::default())
