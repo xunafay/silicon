@@ -1,10 +1,10 @@
 use analytics::MembranePlotter;
 use bevy::{
     asset::Assets,
+    color::{Color, LinearRgba},
     pbr::{PbrBundle, StandardMaterial},
     prelude::{Commands, ResMut},
     render::{
-        color::Color,
         mesh::{Mesh, Meshable},
         view::Visibility,
     },
@@ -32,7 +32,7 @@ impl TestColumn {
             for y in 0..2 {
                 for z in 0..1 {
                     let leaky_neuron_material = materials.add(StandardMaterial {
-                        emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
+                        emissive: LinearRgba::rgb(23.0, 9.0, 3.0),
                         ..Default::default()
                     });
 
@@ -67,7 +67,7 @@ impl TestColumn {
             for y in 0..2 {
                 for z in 0..1 {
                     let leaky_neuron_material = materials.add(StandardMaterial {
-                        emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
+                        emissive: LinearRgba::rgb(23.0, 9.0, 3.0),
                         ..Default::default()
                     });
 

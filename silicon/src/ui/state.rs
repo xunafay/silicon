@@ -475,7 +475,7 @@ fn draw_gizmo(
         .query_filtered::<(&GlobalTransform, &Projection), With<Camera>>()
         .single(world);
     let view_matrix = Mat4::from(cam_transform.affine().inverse());
-    let projection_matrix = projection.get_projection_matrix();
+    // let projection_matrix = projection.get_projection_matrix();
 
     if selected_entities.len() != 1 {
         return;

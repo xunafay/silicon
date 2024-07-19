@@ -1,11 +1,11 @@
 use analytics::MembranePlotter;
 use bevy::{
     asset::Assets,
+    color::{Color, LinearRgba},
     hierarchy::BuildChildren,
     pbr::{PbrBundle, StandardMaterial},
     prelude::{Bundle, Commands, Component, ResMut},
     render::{
-        color::Color,
         mesh::{Mesh, Meshable},
         view::Visibility,
     },
@@ -53,7 +53,7 @@ impl MiniColumn {
             for y in -1..1 {
                 for z in 0..1 {
                     let leaky_neuron_material = materials.add(StandardMaterial {
-                        emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
+                        emissive: LinearRgba::rgb(23.0, 9.0, 3.0),
                         ..Default::default()
                     });
 
@@ -97,7 +97,7 @@ impl MiniColumn {
             for y in -2..3 {
                 for z in 0..1 {
                     let leaky_neuron_material = materials.add(StandardMaterial {
-                        emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
+                        emissive: LinearRgba::rgb(23.0, 9.0, 3.0),
                         ..Default::default()
                     });
 
@@ -141,7 +141,7 @@ impl MiniColumn {
             for y in -2..3 {
                 for z in 0..1 {
                     let leaky_neuron_material = materials.add(StandardMaterial {
-                        emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
+                        emissive: LinearRgba::rgb(23.0, 9.0, 3.0),
                         ..Default::default()
                     });
 
@@ -181,7 +181,7 @@ impl MiniColumn {
             for y in -2..2 {
                 for z in 0..1 {
                     let oscillating_neuron_material = materials.add(StandardMaterial {
-                        emissive: Color::rgb_linear(3000.0, 23000.0, 9000.0),
+                        emissive: LinearRgba::rgb(23.0, 9.0, 3.0),
                         ..Default::default()
                     });
 
@@ -220,7 +220,7 @@ impl MiniColumn {
             for y in -2..2 {
                 for z in 0..1 {
                     let leaky_neuron_material = materials.add(StandardMaterial {
-                        emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
+                        emissive: LinearRgba::rgb(23.0, 9.0, 3.0),
                         ..Default::default()
                     });
 
@@ -260,7 +260,7 @@ impl MiniColumn {
             for y in -1..2 {
                 for z in 0..1 {
                     let leaky_neuron_material = materials.add(StandardMaterial {
-                        emissive: Color::rgb_linear(23000.0, 9000.0, 3000.0),
+                        emissive: LinearRgba::rgb(23.0, 9.0, 3.0),
                         ..Default::default()
                     });
 

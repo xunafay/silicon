@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use analytics::SiliconAnalyticsPlugin;
 use bevy::{
+    color::Color,
     core::TaskPoolThreadAssignmentPolicy,
     core_pipeline::{
         bloom::{BloomCompositeMode, BloomPrefilterSettings, BloomSettings},
@@ -371,16 +372,16 @@ fn create_synapses(
     );
 
     let synapse_material_excitory = materials.add(StandardMaterial {
-        base_color: Color::rgba(0.4, 0.4, 1.0, 0.8),
-        emissive: Color::rgb_linear(0.3, 0.3, 200.0), // Bright green emissive color
-        alpha_mode: AlphaMode::Blend,                 // Enable blending for translucency
+        base_color: Color::srgba(0.4, 0.4, 1.0, 0.8),
+        emissive: LinearRgba::rgb(0.3, 0.3, 1.0), // Bright green emissive color
+        alpha_mode: AlphaMode::Blend,             // Enable blending for translucency
         ..Default::default()
     });
 
     let synapse_material_inhibitory = materials.add(StandardMaterial {
-        base_color: Color::rgba(1.0, 0.4, 0.4, 0.8),
-        emissive: Color::rgb_linear(200.0, 0.3, 0.3), // Bright red emissive color
-        alpha_mode: AlphaMode::Blend,                 // Enable blending for translucency
+        base_color: Color::srgba(1.0, 0.4, 0.4, 0.8),
+        emissive: LinearRgba::rgb(1.0, 0.3, 0.3), // Bright red emissive color
+        alpha_mode: AlphaMode::Blend,             // Enable blending for translucency
         ..Default::default()
     });
 
