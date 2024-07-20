@@ -11,6 +11,7 @@ use bevy::{
     reflect::Reflect,
 };
 use bevy_trait_query::{One, RegisterExt};
+use recorder::{clean_recorder_history, record_membrane_potential, record_synapse_weight};
 use silicon_core::{Clock, Neuron, SpikeRecorder};
 use synapses::{
     stdp::{StdpSettings, StdpSynapse},
@@ -18,6 +19,8 @@ use synapses::{
 };
 use time::update_clock;
 use tracing::{info, trace, warn};
+
+pub mod recorder;
 pub mod time;
 
 #[derive(Event, Debug)]
@@ -63,6 +66,14 @@ impl Plugin for SimulationPlugin {
                 update_synapses,
                 prune_synapses,
                 // reward_modulated_stdp,
+            ),
+        )
+        .add_systems(
+            Update,
+            (
+                record_membrane_potential,
+                record_synapse_weight,
+                clean_recorder_history,
             ),
         );
     }
