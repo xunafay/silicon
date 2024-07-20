@@ -364,6 +364,8 @@ fn simulation_settings(ui: &mut egui::Ui, world: &mut World) {
 #[derive(Debug, Default, Resource)]
 pub struct PlotterConfig {
     pub window_size: usize,
+    pub membrane_window_size: Option<usize>,
+    pub weight_window_size: Option<usize>,
 }
 
 fn plotter(ui: &mut egui::Ui, world: &mut World) {
@@ -402,7 +404,11 @@ fn plotter(ui: &mut egui::Ui, world: &mut World) {
             let spikes = spikes
                 .get_spikes()
                 .iter()
-                .filter(|time| **time >= clock.time - config.window_size as f64)
+                .filter(|time| {
+                    **time
+                        >= clock.time
+                            - config.membrane_window_size.unwrap_or(config.window_size) as f64
+                })
                 .copied()
                 .collect::<Vec<_>>();
             for spike in spikes {
@@ -412,7 +418,11 @@ fn plotter(ui: &mut egui::Ui, world: &mut World) {
             let points: Vec<[f64; 2]> = plotter
                 .values
                 .iter()
-                .filter(|(time, _)| *time >= clock.time - config.window_size as f64)
+                .filter(|(time, _)| {
+                    *time
+                        >= clock.time
+                            - config.membrane_window_size.unwrap_or(config.window_size) as f64
+                })
                 .map(|(time, value)| [*time, *value])
                 .collect();
 
@@ -432,7 +442,11 @@ fn plotter(ui: &mut egui::Ui, world: &mut World) {
             let points: Vec<[f64; 2]> = plotter
                 .values
                 .iter()
-                .filter(|(time, _)| *time >= clock.time - config.window_size as f64)
+                .filter(|(time, _)| {
+                    *time
+                        >= clock.time
+                            - config.weight_window_size.unwrap_or(config.window_size) as f64
+                })
                 .map(|(time, value)| [*time, *value])
                 .collect();
 

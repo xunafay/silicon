@@ -102,7 +102,11 @@ impl Plugin for SiliconPlugin {
         //     next_decay: 1.0,
         // })
         .insert_resource(ValueRecorderConfig { window_size: 10000 })
-        .insert_resource(PlotterConfig { window_size: 300 })
+        .insert_resource(PlotterConfig {
+            window_size: 300,
+            weight_window_size: Some(100000),
+            ..Default::default()
+        })
         .insert_resource(Time::<Fixed>::from_duration(Duration::from_millis(5000)))
         .insert_resource(EncoderState::default())
         .add_systems(Startup, (create_neurons, setup_scene))
