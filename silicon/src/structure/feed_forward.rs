@@ -162,8 +162,8 @@ impl FeedForwardNetwork {
                     stdp_params: StdpParams {
                         a_plus: 0.01,
                         a_minus: -0.01,
-                        tau_plus: 0.02,
-                        tau_minus: 0.02,
+                        tau_plus: 0.2,
+                        tau_minus: 0.2,
                         w_max: 1.0,
                         w_min: 0.0,
                     },

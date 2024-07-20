@@ -4381,6 +4381,10 @@ dependencies = [
 [[package]]
 name = "transcoder"
 version = "0.1.0"
+dependencies = [
+ "bevy",
+ "rand",
+]
 
 [[package]]
 name = "transform-gizmo"

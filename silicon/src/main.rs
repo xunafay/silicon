@@ -1,16 +1,13 @@
 #![allow(clippy::type_complexity)]
 
-use std::time::Duration;
+use std::{ops::Deref, time::Duration};
 
-use analytics::SiliconAnalyticsPlugin;
 use bevy::{
-    color::Color,
     core::TaskPoolThreadAssignmentPolicy,
     core_pipeline::{
         bloom::{BloomCompositeMode, BloomPrefilterSettings, BloomSettings},
         tonemapping::Tonemapping,
     },
-    diagnostic::FrameTimeDiagnosticsPlugin,
     log::LogPlugin,
     pbr::ClusterConfig,
     prelude::*,
@@ -25,16 +22,17 @@ use bevy_rapier3d::{
 use bevy_trait_query::One;
 use neurons::NeuronPlugin;
 use rand::Rng;
-use silicon_core::{Clock, Neuron, NeuronVisualizer, SpikeRecorder};
+use silicon_core::{Clock, Neuron, NeuronVisualizer, SpikeRecorder, ValueRecorderConfig};
 use simulator::SimulationPlugin;
 use structure::{feed_forward::FeedForwardNetwork, layer::ColumnLayer};
 use synapses::{
-    simple::SimpleSynapse,
-    stdp::{StdpParams, StdpSpikeType, StdpState, StdpSynapse},
-    DeferredStdpEvent, Synapse, SynapseDecay, SynapsePlugin, SynapseType,
+    simple::SimpleSynapse, stdp::StdpSynapse, DeferredStdpEvent, Synapse, SynapsePlugin,
 };
-use transcoder::nlp::string_to_spike_train;
-use ui::{state::UiState, SiliconUiPlugin};
+use transcoder::{nlp::string_to_spike_train, population::PopulationEncoder};
+use ui::{
+    state::{PlotterConfig, UiState},
+    SiliconUiPlugin,
+};
 
 mod structure;
 mod ui;
@@ -46,6 +44,12 @@ fn main() {
 #[derive(Resource)]
 pub struct Insights {
     pub selected_entity: Option<Entity>,
+}
+
+#[derive(Debug, Clone, Reflect, Resource, PartialEq)]
+pub enum Class {
+    Hello,
+    World,
 }
 
 pub struct SiliconPlugin;
@@ -81,31 +85,37 @@ impl Plugin for SiliconPlugin {
         )
         .add_plugins(PanOrbitCameraPlugin)
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
-        .add_plugins(SiliconUiPlugin)
         .add_plugins((
             SimulationPlugin,
             NeuronPlugin,
             SynapsePlugin,
-            SiliconAnalyticsPlugin,
+            SiliconUiPlugin,
         ))
-        .add_plugins(FrameTimeDiagnosticsPlugin)
         // .add_plugins(RapierDebugRenderPlugin::default())
         .insert_resource(Msaa::Sample8)
         .insert_resource(Insights {
             selected_entity: None,
         })
-        .insert_resource(SynapseDecay {
-            interval: 1.0,
-            amount: 0.0001,
-            next_decay: 1.0,
-        })
+        // .insert_resource(SynapseDecay {
+        //     interval: 1.0,
+        //     amount: 0.0001,
+        //     next_decay: 1.0,
+        // })
+        .insert_resource(ValueRecorderConfig { window_size: 10000 })
+        .insert_resource(PlotterConfig { window_size: 300 })
         .insert_resource(Time::<Fixed>::from_duration(Duration::from_millis(5000)))
         .insert_resource(EncoderState::default())
-        .add_systems(Update, insert_current)
+        .add_systems(Startup, (create_neurons, setup_scene))
         .add_systems(PostStartup, notify_setup_done)
-        .add_systems(Update, show_select_neuron_synapses)
-        .add_systems(Update, (update_neuron_materials, mouse_click))
-        .add_systems(Startup, (create_neurons, setup_scene));
+        .add_systems(
+            Update,
+            (
+                insert_current,
+                show_select_neuron_synapses,
+                update_neuron_materials,
+                mouse_click,
+            ),
+        );
         // .add_systems(PostStartup, hide_meshes) // hide meshes if you need some extra performance
     }
 }
@@ -165,23 +175,37 @@ fn notify_setup_done() {
 
 #[derive(Debug, Resource, Reflect)]
 struct EncoderState {
-    pub is_playing: bool,
-    pub current_time: f64,
-    pub paused_time: f64,
-    pub spike_train: Vec<f64>,
-    pub class: u32,
+    pub next_presentation_time: f64,
+    pub time_between_classes: f64,
+    pub current_class: Class,
+    pub encoders: Vec<(Class, PopulationEncoder)>,
 }
 
 impl Default for EncoderState {
     fn default() -> Self {
         EncoderState {
-            is_playing: false,
-            current_time: 0.0,
-            paused_time: 5.0,
-            spike_train: Vec::new(),
-            class: 0,
+            current_class: Class::Hello,
+            encoders: vec![],
+            time_between_classes: 5.0,
+            next_presentation_time: 5.0,
         }
     }
+}
+
+fn reward(firing_rate: i32, target_rate: i32) -> f64 {
+    let target_rate = match target_rate {
+        0 => 0.001,
+        _ => target_rate as f64,
+    };
+
+    let error = error(firing_rate as f64, target_rate);
+    let reward = 1.0 - error / target_rate;
+    reward.clamp(-1.0, 1.0)
+}
+
+fn error(firing_rate: f64, target_rate: f64) -> f64 {
+    let error = (target_rate - firing_rate).abs();
+    error
 }
 
 fn insert_current(
@@ -196,145 +220,120 @@ fn insert_current(
     mut deferred_stdp_events: ResMut<Events<DeferredStdpEvent>>,
     mut stdp_synapses: Query<(Entity, &mut StdpSynapse)>,
 ) {
-    if clock.time_to_simulate <= 0.0 {
+    if clock.time < encoder.next_presentation_time {
         return;
     }
 
-    if encoder.is_playing {
-        encoder.current_time += clock.tau;
-        let last = encoder.spike_train.last();
-        // trace!(
-        //     "Current time: {}, spike time: {}",
-        //     encoder.current_time,
-        //     last.unwrap_or(&0.0)
-        // );
-        if let Some(last) = last {
-            if last >= &encoder.current_time {
-                encoder.spike_train.pop();
-                let mut input_neurons = neurons_query
-                    .iter_mut()
-                    .filter(|(_, _, layer, _)| *layer == &ColumnLayer::L1)
-                    .collect::<Vec<_>>();
+    // presentation time is done, calculate reward for the current class
+    // apply reward modulated STDP
+    // present the next class
 
-                input_neurons.sort_by(|(a, _, _, _), (b, _, _, _)| {
-                    let a = a.generation() as f64 + (a.index() as f64 / 10.0);
-                    let b = b.generation() as f64 + (b.index() as f64 / 10.0);
-                    a.partial_cmp(&b).unwrap()
-                });
+    // == calculate reward ==
 
-                match encoder.class {
-                    0 => {
-                        for (_, ref mut neuron, _, _) in input_neurons.iter_mut().step_by(2) {
-                            neuron.insert_current(rand::thread_rng().gen_range(0.6..=0.8));
-                        }
-                    }
-                    _ => {
-                        for (_, ref mut neuron, _, _) in input_neurons.iter_mut().skip(1).step_by(2)
-                        {
-                            neuron.insert_current(rand::thread_rng().gen_range(0.6..=0.8));
-                        }
-                    }
-                }
-            }
+    let mut output_neurons = neurons_query
+        .iter()
+        .filter(|(_, _, layer, _)| *layer == &ColumnLayer::L6)
+        .collect::<Vec<_>>();
+    output_neurons.sort_by(|(a, _, _, _), (b, _, _, _)| {
+        let a = a.generation() as f64 + (a.index() as f64 / 10.0);
+        let b = b.generation() as f64 + (b.index() as f64 / 10.0);
+        a.partial_cmp(&b).unwrap()
+    });
+
+    let mut class_for_neuron = Class::Hello;
+    let mut correct_class_spikes = 0;
+    let mut wrong_class_spikes = 0;
+
+    for (entity, _, _, spike_recorder) in output_neurons {
+        trace!(
+            "Calculating reward for neuron {:?} with class {:?}",
+            entity,
+            class_for_neuron
+        );
+        let spikes = spike_recorder
+            .get_spikes()
+            .iter()
+            .filter(|s| **s >= clock.time - encoder.time_between_classes)
+            .count();
+
+        if class_for_neuron == encoder.current_class {
+            correct_class_spikes += spikes as i32;
         } else {
-            trace!("End of spike train for class {}", encoder.class);
-            encoder.is_playing = false;
-            encoder.paused_time = 5.0;
-            encoder.current_time = 0.0;
+            wrong_class_spikes += spikes as i32;
         }
-    } else {
-        encoder.paused_time -= clock.tau;
-        if encoder.paused_time <= 0.0 {
-            // calculate reward
-            let mut reward = 0.0;
-            let reward_max = 5.0;
-            let reward_min = -5.0;
-            let mut output_neurons = neurons_query
-                .iter()
-                .filter(|(_, _, layer, _)| *layer == &ColumnLayer::L6)
-                .collect::<Vec<_>>();
-            output_neurons.sort_by(|(a, _, _, _), (b, _, _, _)| {
-                let a = a.generation() as f64 + (a.index() as f64 / 10.0);
-                let b = b.generation() as f64 + (b.index() as f64 / 10.0);
-                a.partial_cmp(&b).unwrap()
-            });
 
-            let mut class_for_neuron = 0;
-            for (entity, _, _, spike_recorder) in output_neurons {
-                trace!(
-                    "Calculating reward for neuron {:?} with class {}",
-                    entity,
-                    class_for_neuron
-                );
-                let spikes = spike_recorder
-                    .get_spikes()
-                    .iter()
-                    .filter(|s| **s >= clock.time - 5.0)
-                    .count() as f64;
+        class_for_neuron = match class_for_neuron {
+            Class::Hello => Class::World,
+            Class::World => Class::Hello,
+        };
+    }
 
-                let delta_reward = spikes;
-                if spikes == 0.0 && class_for_neuron == encoder.class {
-                    reward -= 1.0;
-                }
+    trace!(
+        "Correct class spikes: {}\t Wrong class spikes: {}\t expected class: {:?}",
+        correct_class_spikes,
+        wrong_class_spikes,
+        encoder.current_class
+    );
 
-                if class_for_neuron == encoder.class {
-                    reward += delta_reward;
-                } else {
-                    reward -= delta_reward;
-                }
+    let correct_error = error(correct_class_spikes as f64, 3.0);
+    let wrong_error = error(wrong_class_spikes as f64, 0.0);
 
-                class_for_neuron += 1;
+    let mut reward = match correct_error > wrong_error {
+        true => reward(correct_class_spikes, 3),
+        false => reward(wrong_class_spikes, 3),
+    };
 
-                trace!("Reward for neuron {:?} is {}", entity, delta_reward);
-            }
+    trace!("Reward: {}", reward);
 
-            trace!("Total reward: {}", reward);
-            reward = reward.clamp(reward_min, reward_max);
-            trace!("Clamped reward: {}", reward);
+    if reward == 0.0 {
+        trace!("reward is zero, randomizing it for network exploration purposes");
+        reward = rand::thread_rng().gen_range(-2.0..=2.0);
+        trace!("Randomized reward: {}", reward);
+    }
 
-            if reward == 0.0 {
-                trace!("reward is zero, randomizing it for network exploration purposes");
-                reward = rand::thread_rng().gen_range(-2.0..=2.0);
-                trace!("Randomized reward: {}", reward);
-            }
+    // == apply reward modulated STDP ==
+    for event in deferred_stdp_events.drain() {
+        let synapse = stdp_synapses
+            .iter_mut()
+            .find(|(entity, _)| *entity == event.synapse);
 
-            // apply reward modulated STDP
-            for event in deferred_stdp_events.drain() {
-                let synapse = stdp_synapses
-                    .iter_mut()
-                    .find(|(entity, _)| *entity == event.synapse);
+        if let Some((_, mut synapse)) = synapse {
+            trace!("applying stdp to {:?} with\ndelta weight {}\nreward modulated delta weight: {}\nnew weight {}",
+                event.synapse,
+                event.delta_weight,
+                event.delta_weight * reward,
+                synapse.weight + event.delta_weight
+            );
 
-                if let Some((_, mut synapse)) = synapse {
-                    // trace!(
-                    //     "applying stdp to {:?} with\ndelta weight {}\nreward modulated delta weight: {}\nnew weight {}",
-                    //     event.synapse,
-                    //     event.delta_weight,
-                    //     event.delta_weight * reward,
-                    //     synapse.weight + event.delta_weight
-                    // );
+            synapse.weight += event.delta_weight * reward;
+            synapse.weight = synapse
+                .weight
+                .clamp(synapse.stdp_params.w_min, synapse.stdp_params.w_max);
+        }
+    }
 
-                    synapse.weight += event.delta_weight * reward;
-                    synapse.weight = synapse
-                        .weight
-                        .clamp(synapse.stdp_params.w_min, synapse.stdp_params.w_max);
-                }
-            }
+    // == present the next class ==
+    encoder.next_presentation_time = clock.time + encoder.time_between_classes;
 
-            // reset the encoder
-            encoder.class = (encoder.class + 1) % 2; // toggle between 0 and 1
-            encoder.is_playing = true;
-            match encoder.class {
-                0 => {
-                    encoder.spike_train = string_to_spike_train("hello", 5.0);
-                    trace!("Playing spike train: hello");
-                }
-                _ => {
-                    encoder.spike_train = string_to_spike_train("world", 5.0);
-                    trace!("Playing spike train: world");
-                }
-            }
-            encoder.spike_train.reverse();
-            trace!("Playing spike train: {:?}", encoder.spike_train);
+    encoder.current_class = match encoder.current_class {
+        Class::Hello => Class::World,
+        Class::World => Class::Hello,
+    };
+
+    let encoder = encoder
+        .encoders
+        .iter()
+        .find(|(class, _)| *class == encoder.current_class);
+
+    if let Some((_, encoder)) = encoder {
+        let population = encoder.neurons.clone();
+        let neurons = neurons_query
+            .iter_mut()
+            .filter(|(entity, _, _, _)| population.contains(entity))
+            .collect::<Vec<_>>();
+
+        for (_, mut neuron, _, _) in neurons {
+            neuron.insert_current(rand::thread_rng().gen_range(1.6..=1.8));
         }
     }
 }
@@ -358,144 +357,25 @@ fn create_neurons(world: &mut World) {
     ffn.connect_layers(3, 2, 0.8, 0.8, world);
     // ffn.connect_layers(3, 4, 0.8, 0.8, world);
     // ffn.connect_layers(4, 5, 1.0, 0.8, world);
-}
 
-fn create_synapses(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    neuron_query: Query<(Entity, &mut dyn Neuron, &Transform)>,
-) {
-    trace!(
-        "Creating synapses for {} neurons",
-        neuron_query.iter().len()
-    );
+    world.resource_scope(|world, mut encoder: Mut<EncoderState>| {
+        let neurons = world
+            .query::<(Entity, &mut dyn Neuron, &ColumnLayer)>()
+            .iter(world)
+            .filter(|(_, _, layer)| *layer == &ColumnLayer::L1)
+            .map(|(entity, _, _)| entity)
+            .collect::<Vec<_>>();
 
-    let synapse_material_excitory = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.4, 0.4, 1.0, 0.8),
-        emissive: LinearRgba::rgb(0.3, 0.3, 1.0), // Bright green emissive color
-        alpha_mode: AlphaMode::Blend,             // Enable blending for translucency
-        ..Default::default()
+        encoder.encoders.push((
+            Class::Hello,
+            PopulationEncoder::from_sample_rate(&neurons, 0.5),
+        ));
+
+        encoder.encoders.push((
+            Class::World,
+            PopulationEncoder::from_sample_rate(&neurons, 0.5),
+        ));
     });
-
-    let synapse_material_inhibitory = materials.add(StandardMaterial {
-        base_color: Color::srgba(1.0, 0.4, 0.4, 0.8),
-        emissive: LinearRgba::rgb(1.0, 0.3, 0.3), // Bright red emissive color
-        alpha_mode: AlphaMode::Blend,             // Enable blending for translucency
-        ..Default::default()
-    });
-
-    let mut iter = neuron_query.iter_combinations();
-
-    while let Some([(pre_entity, _, pre_transform), (post_entity, _, post_transform)]) =
-        iter.fetch_next()
-    {
-        if rand::random::<f64>() < 0.8 {
-            continue;
-        }
-
-        let midpoint = (pre_transform.translation + post_transform.translation) / 2.0;
-        let synapse_pos_pre =
-            (pre_transform.translation + midpoint) / 2.0 - pre_transform.translation;
-        let synapse_pos_post =
-            (post_transform.translation + midpoint) / 2.0 - pre_transform.translation;
-        let direction = post_transform.translation - pre_transform.translation;
-        let length = direction.length();
-        let normalized_direction = direction.normalize();
-        let rotation = Quat::from_rotation_arc(Vec3::Y, normalized_direction);
-
-        let synapse_stalk_mesh = meshes.add(Capsule3d::new(0.05, length).mesh());
-        let synapse_mesh = meshes.add(
-            Cylinder {
-                half_height: 0.2,
-                radius: 0.2,
-            }
-            .mesh(),
-        );
-
-        let synapse_type = if rand::random::<f64>() > 0.2 {
-            SynapseType::Excitatory
-        } else {
-            SynapseType::Inhibitory
-        };
-
-        let synapse_direction = rand::random::<f64>() > 0.5;
-
-        let synapse = commands
-            .spawn((
-                StdpSynapse {
-                    stdp_params: StdpParams {
-                        a_plus: 0.01,
-                        a_minus: -0.01,
-                        tau_plus: 0.02,
-                        tau_minus: 0.02,
-                        w_max: 1.0,
-                        w_min: 0.0,
-                    },
-                    stdp_state: StdpState {
-                        a: 0.0,
-                        spike_type: StdpSpikeType::PreSpike,
-                    },
-                    source: match synapse_direction {
-                        true => pre_entity,
-                        false => post_entity,
-                    },
-                    target: match synapse_direction {
-                        true => post_entity,
-                        false => pre_entity,
-                    },
-                    // weight between 0 and 1
-                    weight: rand::thread_rng().gen_range(0.1..=0.3),
-                    delay: 1,
-                    synapse_type,
-                },
-                Visibility::Visible,
-                GlobalTransform::default(),
-                Transform::from_xyz(0.0, 0.0, 0.0),
-                // Collider::capsule_y(length / 2.0, 0.05),
-            ))
-            .with_children(|parent| {
-                parent.spawn(PbrBundle {
-                    mesh: synapse_mesh.clone(),
-                    material: match synapse_type {
-                        SynapseType::Excitatory => synapse_material_excitory.clone(),
-                        SynapseType::Inhibitory => synapse_material_inhibitory.clone(),
-                    },
-                    transform: Transform {
-                        translation: match synapse_direction {
-                            true => synapse_pos_post,
-                            false => synapse_pos_pre,
-                        },
-                        rotation,
-                        ..Default::default()
-                    },
-                    visibility: Visibility::Inherited,
-                    ..Default::default()
-                });
-
-                parent.spawn(PbrBundle {
-                    mesh: synapse_stalk_mesh,
-                    material: match synapse_type {
-                        SynapseType::Excitatory => synapse_material_excitory.clone(),
-                        SynapseType::Inhibitory => synapse_material_inhibitory.clone(),
-                    },
-                    transform: Transform {
-                        translation: midpoint - pre_transform.translation,
-                        rotation,
-                        ..Default::default()
-                    },
-                    visibility: Visibility::Inherited,
-                    ..Default::default()
-                });
-            })
-            .set_parent(pre_entity)
-            .id();
-
-        info!(
-            "Synapse created: {:?}, connected {:?} to {:?}",
-            synapse, pre_entity, post_entity
-        );
-    }
 }
 
 fn mouse_click(
