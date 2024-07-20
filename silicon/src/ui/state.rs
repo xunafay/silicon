@@ -25,7 +25,7 @@ use simulator::{PruneSettings, SimpleSpikeRecorder};
 use synapses::{Synapse, SynapseType};
 use transform_gizmo_egui::{Color32, GizmoMode};
 
-use crate::{structure::feed_forward::FeedForwardNetwork, EncoderState, Insights};
+use crate::{structure::feed_forward::FeedForwardNetwork, EncoderState, Interactions};
 
 use super::SimulationUiState;
 
@@ -167,7 +167,7 @@ impl egui_dock::TabViewer for TabViewer<'_> {
             }
             EguiWindow::NeuronInspector => {
                 let selected = {
-                    let insights = self.world.get_resource::<Insights>().unwrap();
+                    let insights = self.world.get_resource::<Interactions>().unwrap();
                     insights.selected_entity.clone()
                 };
 
@@ -371,7 +371,7 @@ pub struct PlotterConfig {
 fn plotter(ui: &mut egui::Ui, world: &mut World) {
     let mut membrane_plotters = world.query::<(Entity, &ValueRecorder, &SimpleSpikeRecorder)>();
     let mut synapse_plotters = world.query::<(Entity, &ValueRecorder, One<&dyn Synapse>)>();
-    let insights = world.get_resource::<Insights>().unwrap();
+    let insights = world.get_resource::<Interactions>().unwrap();
     let clock = world.get_resource::<Clock>().unwrap();
     let config = world.get_resource::<PlotterConfig>().unwrap();
 

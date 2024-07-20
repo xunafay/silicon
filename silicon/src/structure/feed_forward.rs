@@ -7,7 +7,7 @@ use bevy::{
     prelude::{Entity, Mut, World},
     render::{
         alpha::AlphaMode,
-        mesh::{Mesh, Meshable},
+        mesh::{Mesh, MeshBuilder, Meshable},
         view::Visibility,
     },
     transform::components::{GlobalTransform, Transform},
@@ -16,6 +16,7 @@ use bevy_math::{
     primitives::{Capsule3d, Cuboid, Cylinder},
     Quat, Vec3,
 };
+use bevy_mod_outline::{OutlineBundle, OutlineMeshExt, OutlineVolume};
 use bevy_rapier3d::geometry::Collider;
 use neurons::izhikevich::IzhikevichNeuron;
 use rand::Rng;
@@ -51,7 +52,9 @@ impl FeedForwardNetwork {
                     emissive: LinearRgba::rgb(23.0, 9.0, 3.0),
                     ..Default::default()
                 });
-                let mesh = meshes.add(Cuboid::new(0.5, 0.5, 0.5).mesh());
+                let mut mesh = Cuboid::new(0.5, 0.5, 0.5).mesh().build();
+                mesh.generate_outline_normals().unwrap();
+                let mesh = meshes.add(mesh);
 
                 let mut layer = vec![];
 
@@ -73,6 +76,14 @@ impl FeedForwardNetwork {
                                         c: -100.0,
                                         d: 8.0,
                                         synapse_weight_multiplier: 80.0,
+                                    },
+                                    OutlineBundle {
+                                        outline: OutlineVolume {
+                                            visible: false,
+                                            colour: Color::srgb(0.0, 1.0, 0.0),
+                                            width: 5.0,
+                                        },
+                                        ..Default::default()
                                     },
                                     PbrBundle {
                                         mesh: mesh.clone(),
@@ -144,14 +155,18 @@ impl FeedForwardNetwork {
 
         let (synapse_stalk_mesh, synapse_mesh) =
             world.resource_scope(|world, mut meshes: Mut<Assets<Mesh>>| {
-                let synapse_stalk_mesh = meshes.add(Capsule3d::new(0.05, length).mesh());
-                let synapse_mesh = meshes.add(
-                    Cylinder {
-                        half_height: 0.2,
-                        radius: 0.2,
-                    }
-                    .mesh(),
-                );
+                let mut mesh = Capsule3d::new(0.05, length).mesh().build();
+                mesh.generate_outline_normals().unwrap();
+                let synapse_stalk_mesh = meshes.add(mesh);
+
+                let mut mesh = Cylinder {
+                    half_height: 0.2,
+                    radius: 0.2,
+                }
+                .mesh()
+                .build();
+                mesh.generate_outline_normals().unwrap();
+                let synapse_mesh = meshes.add(mesh);
 
                 (synapse_stalk_mesh, synapse_mesh)
             });
@@ -185,35 +200,55 @@ impl FeedForwardNetwork {
                 // Collider::capsule_y(length / 2.0, 0.05),
             ))
             .with_children(|parent| {
-                parent.spawn(PbrBundle {
-                    mesh: synapse_mesh.clone(),
-                    material: match synapse_type {
-                        SynapseType::Excitatory => synapse_material_excitory.clone(),
-                        SynapseType::Inhibitory => synapse_material_inhibitory.clone(),
-                    },
-                    transform: Transform {
-                        translation: synapse_pos_post,
-                        rotation,
+                parent.spawn((
+                    PbrBundle {
+                        mesh: synapse_mesh.clone(),
+                        material: match synapse_type {
+                            SynapseType::Excitatory => synapse_material_excitory.clone(),
+                            SynapseType::Inhibitory => synapse_material_inhibitory.clone(),
+                        },
+                        transform: Transform {
+                            translation: synapse_pos_post,
+                            rotation,
+                            ..Default::default()
+                        },
+                        visibility: Visibility::Inherited,
                         ..Default::default()
                     },
-                    visibility: Visibility::Inherited,
-                    ..Default::default()
-                });
+                    OutlineBundle {
+                        outline: OutlineVolume {
+                            visible: false,
+                            colour: Color::srgb(0.0, 1.0, 0.0),
+                            width: 5.0,
+                        },
+                        ..Default::default()
+                    },
+                ));
 
-                parent.spawn(PbrBundle {
-                    mesh: synapse_stalk_mesh,
-                    material: match synapse_type {
-                        SynapseType::Excitatory => synapse_material_excitory.clone(),
-                        SynapseType::Inhibitory => synapse_material_inhibitory.clone(),
-                    },
-                    transform: Transform {
-                        translation: midpoint - pre_transform.translation,
-                        rotation,
+                parent.spawn((
+                    PbrBundle {
+                        mesh: synapse_stalk_mesh,
+                        material: match synapse_type {
+                            SynapseType::Excitatory => synapse_material_excitory.clone(),
+                            SynapseType::Inhibitory => synapse_material_inhibitory.clone(),
+                        },
+                        transform: Transform {
+                            translation: midpoint - pre_transform.translation,
+                            rotation,
+                            ..Default::default()
+                        },
+                        visibility: Visibility::Inherited,
                         ..Default::default()
                     },
-                    visibility: Visibility::Inherited,
-                    ..Default::default()
-                });
+                    OutlineBundle {
+                        outline: OutlineVolume {
+                            visible: false,
+                            colour: Color::srgb(0.0, 1.0, 0.0),
+                            width: 5.0,
+                        },
+                        ..Default::default()
+                    },
+                ));
             })
             .set_parent(*pre_neuron)
             .id();
@@ -277,7 +312,9 @@ impl FeedForwardNetwork {
                 });
 
                 let mesh = world.resource_scope(|_, mut meshes: Mut<Assets<Mesh>>| {
-                    meshes.add(Cuboid::new(0.5, 0.5, 0.5).mesh())
+                    let mut mesh = Cuboid::new(0.5, 0.5, 0.5).mesh().build();
+                    mesh.generate_outline_normals().unwrap();
+                    meshes.add(mesh)
                 });
 
                 (leaky_neuron_material, mesh)
@@ -303,6 +340,14 @@ impl FeedForwardNetwork {
                                 c: -100.0,
                                 d: 8.0,
                                 synapse_weight_multiplier: 80.0,
+                            },
+                            OutlineBundle {
+                                outline: OutlineVolume {
+                                    visible: false,
+                                    colour: Color::srgb(0.0, 1.0, 0.0),
+                                    width: 5.0,
+                                },
+                                ..Default::default()
                             },
                             PbrBundle {
                                 mesh: mesh.clone(),

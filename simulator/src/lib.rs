@@ -9,6 +9,7 @@ use bevy::{
     },
     reflect::Reflect,
 };
+use bevy_mod_outline::OutlinePlugin;
 use bevy_trait_query::{One, RegisterExt};
 use recorder::{clean_recorder_history, record_membrane_potential, record_synapse_weight};
 use silicon_core::{Clock, Neuron, SpikeRecorder};
@@ -44,11 +45,7 @@ impl Plugin for SimulationPlugin {
             time_to_simulate: 0.0,
             run_indefinitely: false,
         })
-        .insert_resource(StdpSettings {
-            look_back: 1.0,
-            update_interval: 1.0,
-            next_update: -0.1,
-        })
+        .add_plugins(OutlinePlugin)
         .register_type::<Clock>()
         .register_type::<StdpSettings>()
         .register_type::<SimpleSpikeRecorder>()

@@ -14,6 +14,7 @@ use bevy::{
     tasks::available_parallelism,
     window::WindowResolution,
 };
+use bevy_mod_outline::OutlineVolume;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::{
     pipeline::QueryFilter,
@@ -26,7 +27,9 @@ use silicon_core::{Clock, Neuron, NeuronVisualizer, SpikeRecorder, ValueRecorder
 use simulator::SimulationPlugin;
 use structure::{feed_forward::FeedForwardNetwork, layer::ColumnLayer};
 use synapses::{
-    simple::SimpleSynapse, stdp::StdpSynapse, DeferredStdpEvent, Synapse, SynapsePlugin,
+    simple::SimpleSynapse,
+    stdp::{StdpSettings, StdpSynapse},
+    DeferredStdpEvent, Synapse, SynapsePlugin,
 };
 use transcoder::{nlp::string_to_spike_train, population::PopulationEncoder};
 use ui::{
@@ -42,7 +45,7 @@ fn main() {
 }
 
 #[derive(Resource)]
-pub struct Insights {
+pub struct Interactions {
     pub selected_entity: Option<Entity>,
 }
 
@@ -93,8 +96,13 @@ impl Plugin for SiliconPlugin {
         ))
         // .add_plugins(RapierDebugRenderPlugin::default())
         .insert_resource(Msaa::Sample8)
-        .insert_resource(Insights {
+        .insert_resource(Interactions {
             selected_entity: None,
+        })
+        .insert_resource(StdpSettings {
+            look_back: 1.0,
+            update_interval: 1.0,
+            next_update: -0.1,
         })
         // .insert_resource(SynapseDecay {
         //     interval: 1.0,
@@ -133,7 +141,7 @@ fn hide_meshes(mut visibilities: Query<&mut Visibility>) {
 
 // Inherited visibilty didn't work for me, so I had to query the children and set their visibility too
 fn show_select_neuron_synapses(
-    insights: Res<Insights>,
+    insights: Res<Interactions>,
     mut synapse_query: Query<(One<&dyn Synapse>, &mut Visibility, &Children)>,
     mut child_query: Query<&mut Visibility, (Without<StdpSynapse>, Without<SimpleSynapse>)>, // https://github.com/JoJoJet/bevy-trait-query/pull/58
 ) {
@@ -347,20 +355,14 @@ fn create_neurons(world: &mut World) {
 
     let mut ffn = FeedForwardNetwork::new();
     ffn.add_layer(3, 3, 1, world, Some(ColumnLayer::L1));
-    ffn.add_layer(3, 3, 1, world, Some(ColumnLayer::L2));
-    // ffn.add_layer(3, 3, 1, world, Some(ColumnLayer::L3));
     ffn.add_layer(3, 3, 1, world, Some(ColumnLayer::L4));
-    // ffn.add_layer(3, 3, 1, world, Some(ColumnLayer::L5));
     ffn.add_wta_layer(2, 1, 1, world, Some(ColumnLayer::L6));
+
     ffn.connect_layers(0, 1, 0.8, 0.8, world);
-    ffn.connect_layers(1, 2, 0.8, 0.8, world);
-    ffn.connect_layers(2, 3, 1.0, 0.8, world);
+    ffn.connect_layers(1, 2, 1.0, 0.8, world);
 
     ffn.connect_layers(1, 0, 0.2, 0.8, world);
-    ffn.connect_layers(2, 1, 0.2, 0.8, world);
-    ffn.connect_layers(3, 2, 0.8, 0.8, world);
-    // ffn.connect_layers(3, 4, 0.8, 0.8, world);
-    // ffn.connect_layers(4, 5, 1.0, 0.8, world);
+    ffn.connect_layers(2, 1, 0.8, 0.8, world);
 
     world.resource_scope(|world, mut encoder: Mut<EncoderState>| {
         let neurons = world
@@ -389,7 +391,8 @@ fn mouse_click(
     rapier_context: Res<RapierContext>,
     ui_state: Res<UiState>,
     egui_settings: Res<bevy_egui::EguiSettings>,
-    mut insights: ResMut<Insights>,
+    mut insights: ResMut<Interactions>,
+    mut outline_support: Query<(Entity, &mut OutlineVolume)>,
 ) {
     let window = windows.get_single().unwrap();
     if button_inputs.just_pressed(MouseButton::Left) {
@@ -414,6 +417,13 @@ fn mouse_click(
                 if let Some(ray) =
                     camera.viewport_to_world(camera_transform, adjusted_cursor_position)
                 {
+                    // Remove outline from previously selected entity
+                    if let Some(e) = insights.selected_entity {
+                        if let Ok((_, mut outline)) = outline_support.get_mut(e) {
+                            outline.visible = false;
+                        }
+                    }
+
                     // Perform ray casting
                     if let Some((entity, _intersection)) = rapier_context.cast_ray(
                         ray.origin,
@@ -424,6 +434,9 @@ fn mouse_click(
                     ) {
                         insights.selected_entity = Some(entity);
                         trace!("Clicked on entity: {:?}", entity);
+                        if let Ok((_, mut outline)) = outline_support.get_mut(entity) {
+                            outline.visible = true;
+                        }
                     } else {
                         insights.selected_entity = None;
                     }

@@ -10,3 +10,4 @@ silicon-core = { path = "../silicon-core" }
 synapses = { path = "../synapses" }
 analytics = { path = "../analytics" }
 tracing = "0.1.40"
+bevy_mod_outline = "0.8.0"

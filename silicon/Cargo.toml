@@ -21,3 +21,4 @@ synapses = { path = "../synapses" }
 silicon-core = { path = "../silicon-core" }
 analytics = { path = "../analytics" }
 transcoder = { path = "../transcoder" }
+bevy_mod_outline = "0.8.0"
