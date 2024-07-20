@@ -1,7 +1,6 @@
-use analytics::MembranePlotter;
 use bevy::{
     asset::Assets,
-    color::{Color, LinearRgba},
+    color::LinearRgba,
     hierarchy::BuildChildren,
     pbr::{PbrBundle, StandardMaterial},
     prelude::{Bundle, Commands, Component, ResMut},
@@ -79,7 +78,6 @@ impl MiniColumn {
                                 ),
                                 ..Default::default()
                             },
-                            MembranePlotter::new(),
                             Collider::cuboid(0.25, 0.25, 0.25),
                             ColumnLayer::L1,
                             AllowSynapses,
@@ -123,7 +121,6 @@ impl MiniColumn {
                                 ),
                                 ..Default::default()
                             },
-                            MembranePlotter::new(),
                             Collider::cuboid(0.25, 0.25, 0.25),
                             ColumnLayer::L2,
                             SimpleSpikeRecorder::default(),
@@ -163,7 +160,6 @@ impl MiniColumn {
                                 transform: Transform::from_xyz(x as f32, y as f32, z as f32 + -5.0),
                                 ..Default::default()
                             },
-                            MembranePlotter::new(),
                             Collider::cuboid(0.25, 0.25, 0.25),
                             SimpleSpikeRecorder::default(),
                             ColumnLayer::L3,
@@ -202,7 +198,6 @@ impl MiniColumn {
                                 transform: Transform::from_xyz(x as f32, y as f32, z as f32),
                                 ..Default::default()
                             },
-                            MembranePlotter::new(),
                             Collider::cuboid(0.25, 0.25, 0.25),
                             SimpleSpikeRecorder::default(),
                             ColumnLayer::L4,
@@ -242,7 +237,6 @@ impl MiniColumn {
                                 transform: Transform::from_xyz(x as f32, y as f32, z as f32 + 5.0),
                                 ..Default::default()
                             },
-                            MembranePlotter::new(),
                             Collider::cuboid(0.25, 0.25, 0.25),
                             ColumnLayer::L5,
                             SimpleSpikeRecorder::default(),
@@ -282,7 +276,6 @@ impl MiniColumn {
                                 transform: Transform::from_xyz(x as f32, y as f32, z as f32 + 10.0),
                                 ..Default::default()
                             },
-                            MembranePlotter::new(),
                             Collider::cuboid(0.25, 0.25, 0.25),
                             ColumnLayer::L6,
                             SimpleSpikeRecorder::default(),

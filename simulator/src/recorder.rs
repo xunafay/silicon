@@ -8,9 +8,7 @@ pub(crate) fn record_membrane_potential(
     clock: Res<Clock>,
 ) {
     for (_entity, neuron, mut value_recorder) in neurons_query.iter_mut() {
-        value_recorder
-            .values
-            .push((clock.time, neuron.get_membrane_potential()));
+        value_recorder.push(clock.time, neuron.get_membrane_potential());
     }
 }
 
@@ -19,9 +17,7 @@ pub(crate) fn record_synapse_weight(
     clock: Res<Clock>,
 ) {
     for (_, synapse, mut value_recorder) in synapses_query.iter_mut() {
-        value_recorder
-            .values
-            .push((clock.time, synapse.get_weight()));
+        value_recorder.push(clock.time, synapse.get_weight());
     }
 }
 

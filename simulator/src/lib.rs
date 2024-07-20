@@ -1,6 +1,5 @@
 #![allow(clippy::type_complexity)]
 
-use analytics::MembranePlotter;
 use bevy::{
     app::{App, Plugin, Update},
     hierarchy::DespawnRecursiveExt,
@@ -52,7 +51,6 @@ impl Plugin for SimulationPlugin {
         })
         .register_type::<Clock>()
         .register_type::<StdpSettings>()
-        .register_type::<MembranePlotter>()
         .register_type::<SimpleSpikeRecorder>()
         .add_event::<SpikeEvent>()
         .insert_resource(PruneSettings::default())
@@ -199,7 +197,6 @@ fn update_neurons(
     mut neuron_query: Query<(
         Entity,
         One<&mut dyn Neuron>,
-        Option<&mut MembranePlotter>,
         Option<One<&mut dyn SpikeRecorder>>,
     )>,
     mut stdp_synapses: Query<(Entity, &mut StdpSynapse)>,
@@ -210,12 +207,11 @@ fn update_neurons(
         return;
     }
 
-    for (entity, mut neuron, mut plotter, mut spike_recorder) in neuron_query.iter_mut() {
+    for (entity, mut neuron, mut spike_recorder) in neuron_query.iter_mut() {
         let fired = neuron.update(clock.tau);
-        if let Some(plotter) = &mut plotter {
-            plotter.add_point(neuron.get_membrane_potential(), clock.time);
+        if let Some(spike_recorder) = spike_recorder.as_mut() {
             if fired {
-                plotter.add_spike(clock.time);
+                spike_recorder.record_spike(clock.time);
             }
         }
 
@@ -224,11 +220,6 @@ fn update_neurons(
                 time: clock.time,
                 neuron: entity,
             });
-
-            if let Some(spike_recorder) = &mut spike_recorder {
-                // trace!("Recording spike for neuron {:?} at {}", entity, clock.time);
-                spike_recorder.record_spike(clock.time);
-            }
 
             stdp_synapses
                 .iter_mut()

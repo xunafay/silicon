@@ -1,12 +1,13 @@
 use std::any::TypeId;
 
-use analytics::MembranePlotter;
 use bevy::{
     asset::{ReflectAsset, UntypedAssetId},
     log::info,
-    prelude::{AppTypeRegistry, Entity, Mut, ReflectResource, Resource, With, World},
+    prelude::{
+        AppTypeRegistry, Entity, Mut, ReflectResource, Resource, SystemParamFunction, With, World,
+    },
     reflect::TypeRegistry,
-    render::camera::{Camera, CameraProjection, Projection},
+    render::camera::{Camera, Projection},
     transform::components::GlobalTransform,
 };
 use bevy_egui::egui::{self};
@@ -18,9 +19,9 @@ use bevy_inspector_egui::bevy_inspector::{
 use bevy_math::Mat4;
 use bevy_trait_query::One;
 use egui_dock::{DockArea, DockState, NodeIndex, Style};
-use egui_plot::{Legend, Line, Plot, VLine};
-use silicon_core::{Clock, Neuron};
-use simulator::PruneSettings;
+use egui_plot::{Corner, Legend, Line, Plot, VLine};
+use silicon_core::{Clock, Neuron, SpikeRecorder, ValueRecorder};
+use simulator::{PruneSettings, SimpleSpikeRecorder};
 use synapses::{Synapse, SynapseType};
 use transform_gizmo_egui::{Color32, GizmoMode};
 
@@ -154,7 +155,7 @@ impl egui_dock::TabViewer for TabViewer<'_> {
             },
             EguiWindow::GraphViewer => {
                 ui.label("Neuron Inspector");
-                membrane_graph(ui, self.world);
+                plotter(ui, self.world);
             }
             EguiWindow::SimulationSettings => {
                 ui.label("Simulation Settings");
@@ -360,38 +361,89 @@ fn simulation_settings(ui: &mut egui::Ui, world: &mut World) {
     ));
 }
 
-fn membrane_graph(ui: &mut egui::Ui, world: &mut World) {
-    let mut plotters = world.query::<(Entity, &MembranePlotter)>();
+#[derive(Debug, Default, Resource)]
+pub struct PlotterConfig {
+    pub window_size: usize,
+}
+
+fn plotter(ui: &mut egui::Ui, world: &mut World) {
+    let mut membrane_plotters = world.query::<(Entity, &ValueRecorder, &SimpleSpikeRecorder)>();
+    let mut synapse_plotters = world.query::<(Entity, &ValueRecorder, One<&dyn Synapse>)>();
     let insights = world.get_resource::<Insights>().unwrap();
     let clock = world.get_resource::<Clock>().unwrap();
+    let config = world.get_resource::<PlotterConfig>().unwrap();
 
-    let selected_plotter = plotters.iter(world).find(|(entity, _)| {
+    let selected_membrane_plotter = membrane_plotters.iter(world).find(|(entity, _, _)| {
         insights
             .selected_entity
             .map_or(false, |selected_entity| *entity == selected_entity)
     });
+
+    let synapse_plots: Vec<_> = synapse_plotters
+        .iter(world)
+        .filter(|(_, _, synapse)| {
+            insights.selected_entity.map_or(false, |selected_entity| {
+                synapse.get_presynaptic() == selected_entity
+                    || synapse.get_postsynaptic() == selected_entity
+            })
+        })
+        .collect();
 
     if insights.selected_entity.is_none() {
         ui.label("No neuron selected");
         return;
     }
 
-    let plot = Plot::new("Test").legend(Legend::default());
-
-    if let Some((entity, plotter)) = selected_plotter {
+    if let Some((entity, plotter, spikes)) = selected_membrane_plotter {
+        let plot = Plot::new("Neuron")
+            .legend(Legend::default().position(Corner::LeftBottom))
+            .height(200.0);
         plot.show(ui, |plot_ui| {
-            let spikes = plotter.spike_lines(100000.0, clock.time);
+            let spikes = spikes
+                .get_spikes()
+                .iter()
+                .filter(|time| **time >= clock.time - config.window_size as f64)
+                .copied()
+                .collect::<Vec<_>>();
             for spike in spikes {
                 plot_ui.vline(VLine::new(spike).color(Color32::RED));
             }
 
+            let points: Vec<[f64; 2]> = plotter
+                .values
+                .iter()
+                .filter(|(time, _)| *time >= clock.time - config.window_size as f64)
+                .map(|(time, value)| [*time, *value])
+                .collect();
+
             plot_ui.line(
-                Line::new(plotter.plot_points(100000.0, clock.time))
+                Line::new(points)
                     .name(format!("{:?}", entity))
                     .color(Color32::BLUE),
             );
         });
     }
+
+    let plot = Plot::new("Synapses")
+        .legend(Legend::default().position(Corner::LeftBottom))
+        .height(200.0);
+    plot.show(ui, |plot_ui| {
+        for (entity, plotter, synapse) in synapse_plots.iter() {
+            let points: Vec<[f64; 2]> = plotter
+                .values
+                .iter()
+                .filter(|(time, _)| *time >= clock.time - config.window_size as f64)
+                .map(|(time, value)| [*time, *value])
+                .collect();
+
+            plot_ui.line(Line::new(points).name(format!("{:?}", entity)).color(
+                match synapse.get_type() {
+                    SynapseType::Excitatory => Color32::BLUE,
+                    SynapseType::Inhibitory => Color32::RED,
+                },
+            ));
+        }
+    });
 }
 
 fn select_resource(

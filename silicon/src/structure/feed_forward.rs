@@ -1,4 +1,3 @@
-use analytics::MembranePlotter;
 use bevy::{
     asset::Assets,
     color::{Color, LinearRgba},
@@ -20,6 +19,7 @@ use bevy_math::{
 use bevy_rapier3d::geometry::Collider;
 use neurons::izhikevich::IzhikevichNeuron;
 use rand::Rng;
+use silicon_core::ValueRecorder;
 use simulator::SimpleSpikeRecorder;
 use synapses::{
     stdp::{StdpParams, StdpSpikeType, StdpState, StdpSynapse},
@@ -85,7 +85,7 @@ impl FeedForwardNetwork {
                                         ),
                                         ..Default::default()
                                     },
-                                    MembranePlotter::new(),
+                                    ValueRecorder::default(),
                                     Collider::cuboid(0.25, 0.25, 0.25),
                                     column_layer.clone(),
                                     AllowSynapses,
@@ -181,6 +181,7 @@ impl FeedForwardNetwork {
                 Visibility::Visible,
                 GlobalTransform::default(),
                 Transform::from_xyz(0.0, 0.0, 0.0),
+                ValueRecorder::default(),
                 // Collider::capsule_y(length / 2.0, 0.05),
             ))
             .with_children(|parent| {
@@ -314,7 +315,7 @@ impl FeedForwardNetwork {
                                 ),
                                 ..Default::default()
                             },
-                            MembranePlotter::new(),
+                            ValueRecorder::default(),
                             Collider::cuboid(0.25, 0.25, 0.25),
                             colmun_layer,
                             AllowSynapses,
